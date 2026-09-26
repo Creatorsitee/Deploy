@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
+import JSZip from 'jszip';
 import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
 import {
   UploadCloud,
   FileArchive,
+  Sparkles,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
@@ -32,18 +34,8 @@ import {
   Trash2,
   FileText,
   ShieldCheck,
-  Zap,
-  FolderUp,
-  FileCode,
-  Sparkles,
 } from 'lucide-react';
 import { STARTER_TEMPLATES } from '@/lib/templates';
-import {
-  detectEnvVarsFromZip,
-  parseEnvText,
-  getTemplateEnvPresets,
-  DetectedEnvVar,
-} from '@/lib/env-detector';
 
 interface EnvVarItem {
   id: string;
@@ -51,7 +43,6 @@ interface EnvVarItem {
   value: string;
   target: ('production' | 'preview' | 'development')[];
   visible?: boolean;
-  source?: string;
 }
 
 export default function NewProjectPage() {
@@ -78,7 +69,7 @@ export default function NewProjectPage() {
   const [installCommand, setInstallCommand] = useState('');
   const [outputDirectory, setOutputDirectory] = useState('./');
 
-  // Environment variables state
+  // Environment variables state (Vercel style)
   const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
   const [newEnvKey, setNewEnvKey] = useState('');
   const [newEnvValue, setNewEnvValue] = useState('');
@@ -89,12 +80,103 @@ export default function NewProjectPage() {
   ]);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkEnvText, setBulkEnvText] = useState('');
+  const [detectingEnv, setDetectingEnv] = useState(false);
+  const [detectMessage, setDetectMessage] = useState<string | null>(null);
 
-  // Auto-detection state
-  const [isScanningEnv, setIsScanningEnv] = useState(false);
-  const [detectedSources, setDetectedSources] = useState<string[]>([]);
-  const [autoDetectedCount, setAutoDetectedCount] = useState<number>(0);
-  const [showDetectedBanner, setShowDetectedBanner] = useState<boolean>(false);
+  const handleAutoDetectEnv = async () => {
+    setDetectingEnv(true);
+    setDetectMessage(null);
+    try {
+      let foundVars: { key: string; value: string; target: ('production' | 'preview' | 'development')[] }[] = [];
+
+      if (sourceType === 'zip' && zipFile) {
+        const zip = new JSZip();
+        const zipContent = await zip.loadAsync(zipFile);
+        
+        let envFileText = '';
+        let foundEnvFilename = '';
+
+        for (const [relativePath, zipEntry] of Object.entries(zipContent.files)) {
+          const lowerPath = relativePath.toLowerCase();
+          if (!zipEntry.dir && (lowerPath.endsWith('.env') || lowerPath.includes('.env.') || lowerPath.endsWith('env.example'))) {
+            foundEnvFilename = relativePath;
+            envFileText = await zipEntry.async('text');
+            break;
+          }
+        }
+
+        if (envFileText) {
+          const lines = envFileText.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith('#')) continue;
+            const eqIndex = trimmed.indexOf('=');
+            if (eqIndex > 0) {
+              const key = trimmed.substring(0, eqIndex).trim().replace(/^export\s+/, '');
+              let val = trimmed.substring(eqIndex + 1).trim();
+              if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+                val = val.slice(1, -1);
+              }
+              if (key) {
+                foundVars.push({ key, value: val, target: ['production', 'preview', 'development'] });
+              }
+            }
+          }
+          setDetectMessage(`✨ Auto-detected variables from "${foundEnvFilename}"!`);
+        } else {
+          if (zipContent.files['package.json'] || Object.keys(zipContent.files).some(k => k.endsWith('package.json'))) {
+            foundVars.push(
+              { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] },
+              { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
+            );
+            setDetectMessage('✨ Auto-detected Node.js project. Added runtime variables.');
+          } else {
+            foundVars.push(
+              { key: 'NEXT_PUBLIC_APP_URL', value: 'https://' + (projectSlug || 'my-app') + '.cmnty.biz.id', target: ['production', 'preview', 'development'] },
+              { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] }
+            );
+            setDetectMessage('✨ Auto-detected standard static project structure.');
+          }
+        }
+      } else {
+        if (selectedTemplateId === 'nextjs-starter') {
+          foundVars.push(
+            { key: 'NEXT_PUBLIC_APP_NAME', value: projectName || 'CMNTY Next App', target: ['production', 'preview', 'development'] },
+            { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] }
+          );
+        } else if (selectedTemplateId === 'vite-react') {
+          foundVars.push(
+            { key: 'VITE_APP_TITLE', value: projectName || 'CMNTY Vite App', target: ['production', 'preview', 'development'] },
+            { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
+          );
+        } else {
+          foundVars.push(
+            { key: 'APP_ENV', value: 'production', target: ['production', 'preview', 'development'] },
+            { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
+          );
+        }
+        setDetectMessage(`✨ Auto-detected recommended variables for "${selectedTemplateId}".`);
+      }
+
+      if (foundVars.length > 0) {
+        setEnvVars((prev) => {
+          const existingKeys = new Set(prev.map(e => e.key));
+          const newItems = foundVars.filter(v => !existingKeys.has(v.key)).map(v => ({
+            ...v,
+            id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            visible: false
+          }));
+          return [...prev, ...newItems];
+        });
+      }
+    } catch (err) {
+      console.error('Error auto-detecting env:', err);
+      setDetectMessage('❌ Failed to parse environment files from archive.');
+    } finally {
+      setDetectingEnv(false);
+      setTimeout(() => setDetectMessage(null), 5000);
+    }
+  };
 
   // Step 4: Deployment Execution
   const [deploying, setDeploying] = useState(false);
@@ -111,7 +193,6 @@ export default function NewProjectPage() {
   const [iframeKey, setIframeKey] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const envFileInputRef = useRef<HTMLInputElement>(null);
 
   // Load configured base domains from system config
   useEffect(() => {
@@ -157,95 +238,6 @@ export default function NewProjectPage() {
       setInstallCommand(tmpl.installCommand);
       setOutputDirectory(tmpl.outputDirectory);
     }
-
-    // Auto-detect template preset env vars
-    const presets = getTemplateEnvPresets(tmplId);
-    if (presets.length > 0) {
-      setEnvVars((prev) => {
-        const existingKeys = new Set(prev.map((p) => p.key));
-        const newVars: EnvVarItem[] = [];
-        for (const p of presets) {
-          if (!existingKeys.has(p.key)) {
-            newVars.push({
-              id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-              key: p.key,
-              value: p.value,
-              target: p.target,
-              visible: true,
-              source: p.source,
-            });
-          }
-        }
-        return [...prev, ...newVars];
-      });
-      setDetectedSources(['Starter Template Preset']);
-      setAutoDetectedCount(presets.length);
-      setShowDetectedBanner(true);
-    }
-  };
-
-  // Helper to scan a ZIP file for env vars and framework settings
-  const processZipFile = async (file: File) => {
-    setZipFile(file);
-    const autoName = file.name.replace(/\.zip$/i, '');
-    if (!projectName) {
-      setProjectName(autoName);
-      setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-    }
-    const lowName = file.name.toLowerCase();
-    let autoFw = 'nextjs';
-    if (lowName.includes('vite')) autoFw = 'vite';
-    else if (lowName.includes('astro')) autoFw = 'astro';
-    else if (lowName.includes('vue')) autoFw = 'vue';
-    else if (lowName.includes('nuxt')) autoFw = 'nuxt';
-    else if (lowName.includes('svelte')) autoFw = 'svelte';
-    else if (lowName.includes('react')) autoFw = 'react';
-    else if (lowName.includes('next')) autoFw = 'nextjs';
-
-    setFramework(autoFw);
-    const preset = VERCEL_FRAMEWORKS[autoFw];
-    if (preset) {
-      setBuildCommand(preset.defaultBuild);
-      setOutputDirectory(preset.defaultOutput);
-      setInstallCommand(preset.defaultInstall);
-    }
-
-    // Automatic detection of environment variables from ZIP
-    setIsScanningEnv(true);
-    try {
-      const { detected, sourcesFound } = await detectEnvVarsFromZip(file);
-      if (detected.length > 0) {
-        setEnvVars((prev) => {
-          const map = new Map<string, EnvVarItem>();
-          // Preserve user-added items first
-          for (const item of prev) {
-            map.set(item.key, item);
-          }
-          // Add newly detected items if key does not exist yet
-          for (const d of detected) {
-            if (!map.has(d.key)) {
-              map.set(d.key, {
-                id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                key: d.key,
-                value: d.value,
-                target: d.target,
-                visible: !!d.value,
-                source: d.source,
-              });
-            }
-          }
-          return Array.from(map.values());
-        });
-
-        setDetectedSources(sourcesFound);
-        setAutoDetectedCount(detected.length);
-        setShowDetectedBanner(true);
-      }
-    } catch (e) {
-      console.warn('Env scan error:', e);
-    } finally {
-      setIsScanningEnv(false);
-    }
   };
 
   const handleZipDrop = (e: React.DragEvent) => {
@@ -253,7 +245,29 @@ export default function NewProjectPage() {
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
       if (file.name.endsWith('.zip')) {
-        processZipFile(file);
+        setZipFile(file);
+        const autoName = file.name.replace(/\.zip$/i, '');
+        if (!projectName) {
+          setProjectName(autoName);
+          setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+        }
+        const lowName = file.name.toLowerCase();
+        let autoFw = 'nextjs';
+        if (lowName.includes('vite')) autoFw = 'vite';
+        else if (lowName.includes('astro')) autoFw = 'astro';
+        else if (lowName.includes('vue')) autoFw = 'vue';
+        else if (lowName.includes('nuxt')) autoFw = 'nuxt';
+        else if (lowName.includes('svelte')) autoFw = 'svelte';
+        else if (lowName.includes('react')) autoFw = 'react';
+        else if (lowName.includes('next')) autoFw = 'nextjs';
+
+        setFramework(autoFw);
+        const preset = VERCEL_FRAMEWORKS[autoFw];
+        if (preset) {
+          setBuildCommand(preset.defaultBuild);
+          setOutputDirectory(preset.defaultOutput);
+          setInstallCommand(preset.defaultInstall);
+        }
       } else {
         setErrorMessage('Only .zip archives are allowed');
       }
@@ -263,7 +277,29 @@ export default function NewProjectPage() {
   const handleZipSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       const file = e.target.files[0];
-      processZipFile(file);
+      setZipFile(file);
+      const autoName = file.name.replace(/\.zip$/i, '');
+      if (!projectName) {
+        setProjectName(autoName);
+        setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+      }
+      const lowName = file.name.toLowerCase();
+      let autoFw = 'nextjs';
+      if (lowName.includes('vite')) autoFw = 'vite';
+      else if (lowName.includes('astro')) autoFw = 'astro';
+      else if (lowName.includes('vue')) autoFw = 'vue';
+      else if (lowName.includes('nuxt')) autoFw = 'nuxt';
+      else if (lowName.includes('svelte')) autoFw = 'svelte';
+      else if (lowName.includes('react')) autoFw = 'react';
+      else if (lowName.includes('next')) autoFw = 'nextjs';
+
+      setFramework(autoFw);
+      const preset = VERCEL_FRAMEWORKS[autoFw];
+      if (preset) {
+        setBuildCommand(preset.defaultBuild);
+        setOutputDirectory(preset.defaultOutput);
+        setInstallCommand(preset.defaultInstall);
+      }
     }
   };
 
@@ -283,7 +319,6 @@ export default function NewProjectPage() {
           value: newEnvValue,
           target: newEnvTargets.length > 0 ? newEnvTargets : ['production', 'preview', 'development'],
           visible: false,
-          source: 'Manual Entry',
         },
       ];
     });
@@ -296,129 +331,41 @@ export default function NewProjectPage() {
   const handleBulkImportEnv = () => {
     if (!bulkEnvText.trim()) return;
 
-    const parsed = parseEnvText(bulkEnvText, 'Pasted .env');
-    if (parsed.length === 0) return;
+    const lines = bulkEnvText.split('\n');
+    const newItems: EnvVarItem[] = [];
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) return;
+
+      const equalIdx = trimmed.indexOf('=');
+      if (equalIdx > 0) {
+        const key = trimmed.substring(0, equalIdx).trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
+        let value = trimmed.substring(equalIdx + 1).trim();
+        // Remove surrounding quotes if present
+        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+          value = value.slice(1, -1);
+        }
+        if (key) {
+          newItems.push({
+            id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+            key,
+            value,
+            target: ['production', 'preview', 'development'],
+            visible: false,
+          });
+        }
+      }
+    });
 
     setEnvVars((prev) => {
-      const map = new Map<string, EnvVarItem>();
-      for (const p of prev) map.set(p.key, p);
-      for (const item of parsed) {
-        map.set(item.key, {
-          id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          key: item.key,
-          value: item.value,
-          target: item.target,
-          visible: !!item.value,
-          source: 'Pasted .env',
-        });
-      }
-      return Array.from(map.values());
+      const existingKeys = new Set(newItems.map((n) => n.key));
+      const filtered = prev.filter((e) => !existingKeys.has(e.key));
+      return [...filtered, ...newItems];
     });
 
     setBulkEnvText('');
     setShowBulkModal(false);
-    setAutoDetectedCount(parsed.length);
-    setDetectedSources(['Pasted .env file']);
-    setShowDetectedBanner(true);
-  };
-
-  // Dedicated .env File Picker Handler
-  const handleEnvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (event) => {
-        const content = event.target?.result as string;
-        if (content) {
-          const parsed = parseEnvText(content, file.name);
-          if (parsed.length > 0) {
-            setEnvVars((prev) => {
-              const map = new Map<string, EnvVarItem>();
-              for (const p of prev) map.set(p.key, p);
-              for (const item of parsed) {
-                map.set(item.key, {
-                  id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                  key: item.key,
-                  value: item.value,
-                  target: item.target,
-                  visible: !!item.value,
-                  source: file.name,
-                });
-              }
-              return Array.from(map.values());
-            });
-
-            setAutoDetectedCount(parsed.length);
-            setDetectedSources([file.name]);
-            setShowDetectedBanner(true);
-          }
-        }
-      };
-      reader.readAsText(file);
-    }
-  };
-
-  // Re-run Auto-Detect from Current ZIP or Template
-  const handleTriggerAutoDetect = async () => {
-    if (zipFile) {
-      setIsScanningEnv(true);
-      try {
-        const { detected, sourcesFound } = await detectEnvVarsFromZip(zipFile);
-        if (detected.length > 0) {
-          setEnvVars((prev) => {
-            const map = new Map<string, EnvVarItem>();
-            for (const p of prev) map.set(p.key, p);
-            for (const d of detected) {
-              if (!map.has(d.key)) {
-                map.set(d.key, {
-                  id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                  key: d.key,
-                  value: d.value,
-                  target: d.target,
-                  visible: !!d.value,
-                  source: d.source,
-                });
-              }
-            }
-            return Array.from(map.values());
-          });
-
-          setDetectedSources(sourcesFound);
-          setAutoDetectedCount(detected.length);
-          setShowDetectedBanner(true);
-        } else {
-          setErrorMessage('No additional environment variables found in ZIP archive.');
-        }
-      } finally {
-        setIsScanningEnv(false);
-      }
-    } else if (sourceType === 'template') {
-      const presets = getTemplateEnvPresets(selectedTemplateId);
-      if (presets.length > 0) {
-        setEnvVars((prev) => {
-          const map = new Map<string, EnvVarItem>();
-          for (const p of prev) map.set(p.key, p);
-          for (const d of presets) {
-            if (!map.has(d.key)) {
-              map.set(d.key, {
-                id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-                key: d.key,
-                value: d.value,
-                target: d.target,
-                visible: !!d.value,
-                source: d.source,
-              });
-            }
-          }
-          return Array.from(map.values());
-        });
-        setDetectedSources(['Starter Template Preset']);
-        setAutoDetectedCount(presets.length);
-        setShowDetectedBanner(true);
-      }
-    } else {
-      envFileInputRef.current?.click();
-    }
   };
 
   const handleRemoveEnvVar = (key: string) => {
@@ -471,49 +418,56 @@ export default function NewProjectPage() {
       const project = projData.project;
       setCreatedProjectId(project.id);
 
-      // 2. Deploy source (ZIP or Template)
+      // 2. Dispatch deployment to Vercel API
       setDeployStepIndex(2);
-
       let deployRes: Response;
+
       if (sourceType === 'zip' && zipFile) {
         const formData = new FormData();
-        formData.append('projectId', project.id);
         formData.append('file', zipFile);
-        deployRes = await authFetch('/api/deploy', {
+        formData.append('commitMessage', `Initial ZIP upload (${zipFile.name})`);
+
+        deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
           method: 'POST',
           body: formData,
         });
       } else if (sourceType === 'template') {
-        deployRes = await authFetch('/api/deploy', {
+        deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            projectId: project.id,
-            templateId: selectedTemplateId,
-          }),
+          body: JSON.stringify({ templateId: selectedTemplateId }),
         });
       } else {
-        throw new Error('Unsupported source configuration');
+        // Git template
+        deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ templateId: 'minimal-portfolio' }),
+        });
       }
 
+      setDeployStepIndex(3);
       const deployData = await deployRes.json();
       if (!deployRes.ok) {
         throw new Error(deployData.error || 'Deployment failed');
       }
 
-      // 3. Domain binding and SSL verification step
-      setDeployStepIndex(3);
-      await new Promise((r) => setTimeout(r, 600));
+      const deployment = deployData.deployment;
+      if (deployment.status === 'ERROR') {
+        throw new Error(deployment.errorMessage || 'Deployment encountered an error');
+      }
 
-      // 4. Finalization
       setDeployStepIndex(4);
-      const fullUrl = `https://${projectSlug}.${selectedDomain}`;
-      setFinalUrl(fullUrl);
+      const productionUrl = deployment.productionUrl || `https://${projectSlug}.${selectedDomain}`;
+      setFinalUrl(productionUrl);
 
-      // Trigger Celebration Modal automatically
-      setShowSuccessModal(true);
+      // Automatically open the success popup modal!
+      setTimeout(() => {
+        setShowSuccessModal(true);
+      }, 500);
     } catch (err: any) {
-      setErrorMessage(err.message || 'An error occurred during deployment.');
+      setErrorMessage(err.message || 'Deployment error occurred');
+      setDeployStepIndex(-1);
     } finally {
       setDeploying(false);
     }
@@ -525,125 +479,134 @@ export default function NewProjectPage() {
     setTimeout(() => setCopiedSuccessUrl(false), 2000);
   };
 
+  const fullSubdomainPreview = `https://${projectSlug || 'my-project'}.${selectedDomain}`;
+
   return (
-    <DashboardLayout
-      breadcrumbs={[
-        { label: 'Projects', href: '/dashboard/projects' },
-        { label: 'New Project' },
-      ]}
-    >
-      <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8">
-        {/* Top Header */}
-        <div className="border-b border-neutral-200/80 pb-5">
-          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">
-            Create a New Project
-          </h1>
+    <DashboardLayout breadcrumbs={[{ label: 'New Project' }]}>
+      <div className="max-w-4xl mx-auto space-y-6 sm:space-y-8 pb-12">
+        <div>
+          <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950">Create New Project</h1>
           <p className="text-xs text-neutral-500 mt-1">
-            Deploy your web application instantly with automated routing, SSL, and environment variable synchronization.
+            Deploy your web application to production with automated domain provisioning and high-performance edge infrastructure.
           </p>
         </div>
 
-        {/* Multi-step Breadcrumbs Indicator */}
-        <div className="grid grid-cols-4 gap-2 text-xs">
+        {/* Multi-step progress indicator: 1 — 2 — 3 — 4 */}
+        <div className="flex items-center justify-center gap-1.5 sm:gap-3 border-b border-neutral-200/80 pb-6 pt-2 text-xs font-semibold">
           {[
-            { num: 1, label: 'Domain & Name' },
-            { num: 2, label: 'Source Files' },
-            { num: 3, label: 'Build & Env Vars' },
-            { num: 4, label: 'Review & Launch' },
-          ].map((s) => (
-            <div
-              key={s.num}
-              className={`p-3 rounded-xl border flex items-center gap-2.5 transition ${
-                step === s.num
-                  ? 'border-neutral-950 bg-neutral-950 text-white font-semibold shadow-xs'
-                  : step > s.num
-                  ? 'border-neutral-200 bg-neutral-100/60 text-neutral-800'
-                  : 'border-neutral-200/60 bg-white text-neutral-400'
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-mono shrink-0 ${
-                  step === s.num
-                    ? 'bg-white text-neutral-950 font-bold'
-                    : step > s.num
-                    ? 'bg-neutral-800 text-white'
-                    : 'bg-neutral-100 text-neutral-500'
+            { num: 1, name: 'Name & Domain' },
+            { num: 2, name: 'Source Code' },
+            { num: 3, name: 'Build & Environment' },
+            { num: 4, name: 'Review & Deploy' },
+          ].map((s, idx) => (
+            <div key={s.num} className="flex items-center gap-1.5 sm:gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  if (step > s.num) setStep(s.num);
+                }}
+                disabled={step <= s.num}
+                className={`flex items-center gap-2 transition ${
+                  step > s.num ? 'cursor-pointer hover:opacity-80' : 'cursor-default'
                 }`}
+                title={s.name}
               >
-                {step > s.num ? '✓' : s.num}
-              </div>
-              <span className="truncate hidden sm:inline">{s.label}</span>
+                <div
+                  className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs sm:text-sm font-mono font-bold transition shrink-0 ${
+                    step === s.num
+                      ? 'bg-neutral-950 text-white shadow-sm ring-2 ring-neutral-950 ring-offset-2'
+                      : step > s.num
+                      ? 'bg-emerald-600 text-white'
+                      : 'bg-neutral-100 text-neutral-500 border border-neutral-300'
+                  }`}
+                >
+                  {step > s.num ? '✓' : s.num}
+                </div>
+                <span
+                  className={`hidden sm:inline text-xs font-semibold ${
+                    step === s.num
+                      ? 'text-neutral-950 font-bold'
+                      : step > s.num
+                      ? 'text-neutral-700'
+                      : 'text-neutral-400'
+                  }`}
+                >
+                  {s.name}
+                </span>
+              </button>
+
+              {idx < 3 && (
+                <div
+                  className={`h-1.5 sm:h-2 w-10 sm:w-16 md:w-24 rounded-full transition-colors ${
+                    step > s.num ? 'bg-neutral-950' : 'bg-neutral-300'
+                  }`}
+                  aria-hidden="true"
+                />
+              )}
             </div>
           ))}
         </div>
 
-        {/* Error Alert Box */}
+        {/* Global Error Banner */}
         {errorMessage && (
-          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-xs text-rose-800 animate-in fade-in">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-            <div className="flex-1">
-              <span className="font-semibold block">Configuration Error</span>
-              <span>{errorMessage}</span>
+          <div className="p-4 bg-rose-50 border border-rose-200 rounded-xl flex items-start gap-3 text-xs text-rose-800 animate-in fade-in duration-200">
+            <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-rose-600" />
+            <div className="space-y-1">
+              <div className="font-semibold">Deployment Notice</div>
+              <p className="break-words">{errorMessage}</p>
             </div>
-            <button
-              type="button"
-              onClick={() => setErrorMessage('')}
-              className="text-rose-500 hover:text-rose-800 font-bold"
-            >
-              ✕
-            </button>
           </div>
         )}
 
-        {/* STEP 1: Project Name & Subdomain Config */}
+        {/* STEP 1: Project Name & Multi-Domain Selection */}
         {step === 1 && (
           <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
             <div>
-              <h2 className="text-base font-bold text-neutral-950">Step 1: Project & Domain Setup</h2>
+              <h2 className="text-base font-bold text-neutral-950">Step 1: Project Details & Domain</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Choose a project name and select your desired public subdomain.
+                Choose a project name and select which domain you would like your subdomain assigned under.
               </p>
             </div>
 
             <div className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Project Display Name
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
+                  Project Name
                 </label>
                 <input
                   type="text"
                   required
                   value={projectName}
                   onChange={handleNameChange}
-                  placeholder="my-portfolio-site"
-                  className="w-full px-3.5 py-2.5 bg-white border border-neutral-200 rounded-xl text-xs font-medium focus:outline-none focus:border-neutral-950 transition"
+                  placeholder="My Next.js App"
+                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-neutral-950 transition"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Assigned Production Domain
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
+                  Choose Subdomain & Root Domain
                 </label>
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                  <div className="flex-1 flex items-center bg-neutral-50 border border-neutral-200 rounded-xl overflow-hidden focus-within:border-neutral-950">
-                    <span className="pl-3 pr-1 text-xs font-mono text-neutral-400 select-none">https://</span>
+                <div className="flex flex-col sm:flex-row items-stretch border border-neutral-300 rounded-lg overflow-hidden focus-within:border-neutral-950 transition bg-neutral-50">
+                  <div className="flex items-center flex-1 px-3 py-2 sm:py-2.5">
+                    <span className="text-xs font-mono text-neutral-400 mr-1 select-none">https://</span>
                     <input
                       type="text"
                       required
                       value={projectSlug}
                       onChange={(e) =>
-                        setProjectSlug(
-                          e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-')
-                        )
+                        setProjectSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
                       }
-                      placeholder="subdomain-slug"
-                      className="flex-1 py-2.5 px-1 bg-transparent text-xs font-mono text-neutral-950 focus:outline-none"
+                      placeholder="my-project"
+                      className="w-full text-xs font-mono font-bold text-neutral-900 bg-transparent focus:outline-none"
                     />
-                    <span className="px-2 text-xs font-mono text-neutral-400">.</span>
+                  </div>
+                  <div className="flex items-center bg-neutral-100 border-t sm:border-t-0 sm:border-l border-neutral-200 px-3 py-2">
+                    <span className="text-xs font-mono text-neutral-500 mr-1.5 font-bold">.</span>
                     <select
                       value={selectedDomain}
                       onChange={(e) => setSelectedDomain(e.target.value)}
-                      className="py-2.5 pr-3 bg-neutral-100 text-xs font-mono font-semibold text-neutral-800 border-l border-neutral-200 focus:outline-none cursor-pointer"
+                      className="bg-transparent text-xs font-mono font-bold text-neutral-900 focus:outline-none cursor-pointer"
                     >
                       {availableDomains.map((dom) => (
                         <option key={dom} value={dom}>
@@ -653,21 +616,20 @@ export default function NewProjectPage() {
                     </select>
                   </div>
                 </div>
-                <p className="text-[11px] text-neutral-400 mt-1.5">
-                  Your project will be live immediately at{' '}
-                  <span className="font-mono text-neutral-700 font-semibold">
-                    https://{projectSlug || 'subdomain'}.{selectedDomain}
-                  </span>
-                </p>
+
+                <div className="flex items-center gap-2 mt-2 text-[11px] text-neutral-500">
+                  <span>Target URL:</span>
+                  <span className="font-mono font-semibold text-neutral-900 break-all">{fullSubdomainPreview}</span>
+                </div>
               </div>
             </div>
 
             <div className="pt-4 border-t border-neutral-100 flex justify-end">
               <button
                 type="button"
-                disabled={!projectName.trim() || !projectSlug.trim()}
+                disabled={!projectName.trim() || !projectSlug.trim() || projectSlug.length < 3}
                 onClick={() => setStep(2)}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 disabled:opacity-40 transition active:scale-98 shadow-xs"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
                 <span>Continue to Source</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -676,59 +638,71 @@ export default function NewProjectPage() {
           </div>
         )}
 
-        {/* STEP 2: Source Code Selection (ZIP or Starter Template) */}
+        {/* STEP 2: Source Code */}
         {step === 2 && (
           <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
             <div>
               <h2 className="text-base font-bold text-neutral-950">Step 2: Source Code</h2>
               <p className="text-xs text-neutral-500 mt-1">
-                Upload a ZIP archive or pick a high-performance starter template.
+                Select how you want to provide your project files.
               </p>
             </div>
 
-            {/* Source Type Switcher */}
-            <div className="grid grid-cols-2 gap-3">
+            {/* Source Selection Tabs */}
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
               <button
                 type="button"
                 onClick={() => setSourceType('template')}
-                className={`p-4 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
+                className={`p-3.5 sm:p-4 border rounded-xl text-left transition flex sm:flex-col justify-between items-start gap-2 ${
                   sourceType === 'template'
-                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs ring-1 ring-neutral-950'
+                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs'
                     : 'border-neutral-200 hover:border-neutral-300'
                 }`}
               >
-                <Sparkles className="w-4 h-4 text-neutral-950 shrink-0 mt-0.5" />
-                <div>
+                <div className="space-y-0.5">
                   <div className="text-xs font-bold text-neutral-950">Starter Template</div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Launch instantly using tested static & modern presets.
-                  </p>
+                  <div className="text-[11px] text-neutral-500">Pre-built, ready in 1 click</div>
                 </div>
+                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
               </button>
 
               <button
                 type="button"
                 onClick={() => setSourceType('zip')}
-                className={`p-4 rounded-xl border text-left flex items-start gap-3 transition cursor-pointer ${
+                className={`p-3.5 sm:p-4 border rounded-xl text-left transition flex sm:flex-col justify-between items-start gap-2 ${
                   sourceType === 'zip'
-                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs ring-1 ring-neutral-950'
+                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs'
                     : 'border-neutral-200 hover:border-neutral-300'
                 }`}
               >
-                <UploadCloud className="w-4 h-4 text-neutral-950 shrink-0 mt-0.5" />
-                <div>
-                  <div className="text-xs font-bold text-neutral-950">Upload ZIP Archive</div>
-                  <p className="text-[11px] text-neutral-500 mt-0.5">
-                    Drag and drop your local project build folder (.zip).
-                  </p>
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-neutral-950">Upload ZIP</div>
+                  <div className="text-[11px] text-neutral-500">HTML, Vite, or Next.js</div>
                 </div>
+                <UploadCloud className="w-4 h-4 text-neutral-900 shrink-0" />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setSourceType('git')}
+                className={`p-3.5 sm:p-4 border rounded-xl text-left transition flex sm:flex-col justify-between items-start gap-2 ${
+                  sourceType === 'git'
+                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs'
+                    : 'border-neutral-200 hover:border-neutral-300'
+                }`}
+              >
+                <div className="space-y-0.5">
+                  <div className="text-xs font-bold text-neutral-950">Git Repository</div>
+                  <div className="text-[11px] text-neutral-500">GitHub / GitLab URL</div>
+                </div>
+                <Globe className="w-4 h-4 text-neutral-900 shrink-0" />
               </button>
             </div>
 
-            {/* Template Selector View */}
+            {/* Template selector */}
             {sourceType === 'template' && (
-              <div className="space-y-3">
-                <label className="block text-xs font-semibold text-neutral-900">
+              <div className="space-y-3 pt-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700">
                   Select a Starter Template
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -736,75 +710,93 @@ export default function NewProjectPage() {
                     <div
                       key={tmpl.id}
                       onClick={() => handleSelectTemplate(tmpl.id)}
-                      className={`p-4 rounded-xl border transition cursor-pointer flex flex-col justify-between space-y-3 ${
+                      className={`p-4 border rounded-xl cursor-pointer transition ${
                         selectedTemplateId === tmpl.id
-                          ? 'border-neutral-950 bg-neutral-50 ring-1 ring-neutral-950'
-                          : 'border-neutral-200 hover:border-neutral-300 bg-white'
+                          ? 'border-neutral-950 bg-neutral-900 text-white shadow-2xs'
+                          : 'border-neutral-200 bg-white hover:border-neutral-400 text-neutral-900'
                       }`}
                     >
-                      <div className="space-y-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-bold text-xs text-neutral-950">{tmpl.name}</span>
-                          <span className="text-[10px] font-mono uppercase bg-neutral-100 px-1.5 py-0.5 rounded text-neutral-600">
-                            {tmpl.framework}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-neutral-500 leading-relaxed">
-                          {tmpl.description}
-                        </p>
+                      <div className="flex items-center justify-between">
+                        <span className="font-bold text-xs">{tmpl.name}</span>
+                        <span
+                          className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                            selectedTemplateId === tmpl.id
+                              ? 'bg-neutral-800 text-neutral-300'
+                              : 'bg-neutral-100 text-neutral-600'
+                          }`}
+                        >
+                          {tmpl.framework}
+                        </span>
                       </div>
-                      <div className="text-[10px] text-neutral-400 font-mono">
-                        Ready to deploy · Zero configuration
-                      </div>
+                      <p
+                        className={`text-xs mt-2 leading-relaxed ${
+                          selectedTemplateId === tmpl.id ? 'text-neutral-400' : 'text-neutral-500'
+                        }`}
+                      >
+                        {tmpl.description}
+                      </p>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* ZIP Upload Drag-and-Drop Area */}
+            {/* ZIP upload dropzone */}
             {sourceType === 'zip' && (
-              <div className="space-y-3">
-                <input
-                  type="file"
-                  ref={fileInputRef}
-                  accept=".zip"
-                  onChange={handleZipSelect}
-                  className="hidden"
-                />
-
+              <div className="space-y-3 pt-2">
                 <div
                   onDragOver={(e) => e.preventDefault()}
                   onDrop={handleZipDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  className="border-2 border-dashed border-neutral-300 hover:border-neutral-950 rounded-2xl p-8 sm:p-12 text-center bg-neutral-50/50 hover:bg-neutral-50 transition cursor-pointer space-y-3"
+                  className="border-2 border-dashed border-neutral-300 hover:border-neutral-950 rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition bg-neutral-50 hover:bg-white"
                 >
-                  <div className="w-12 h-12 rounded-xl bg-white border border-neutral-200 flex items-center justify-center mx-auto text-neutral-700 shadow-2xs">
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".zip"
+                    onChange={handleZipSelect}
+                    className="hidden"
+                  />
+                  <div className="w-12 h-12 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto text-neutral-500 mb-3">
                     <FileArchive className="w-6 h-6" />
                   </div>
-                  <div>
-                    <span className="text-xs font-bold text-neutral-900 block">
-                      {zipFile ? zipFile.name : 'Click or Drag & Drop Project ZIP'}
-                    </span>
-                    <span className="text-[11px] text-neutral-500 block mt-0.5">
-                      Supports React, Vite, Next.js, Astro, or static HTML (Max 50MB)
-                    </span>
-                  </div>
-
-                  {isScanningEnv && (
-                    <div className="inline-flex items-center gap-2 px-3 py-1 bg-amber-50 border border-amber-200 text-amber-800 rounded-lg text-xs font-medium animate-pulse">
-                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
-                      <span>Auto-detecting environment variables & framework...</span>
+                  {zipFile ? (
+                    <div>
+                      <div className="text-xs font-bold text-emerald-700">✓ {zipFile.name}</div>
+                      <div className="text-[11px] text-neutral-400 mt-1">
+                        {(zipFile.size / 1024 / 1024).toFixed(2)} MB · Click or drag another file to replace
+                      </div>
                     </div>
-                  )}
-
-                  {zipFile && !isScanningEnv && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg text-xs font-medium">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Ready to extract: {(zipFile.size / 1024 / 1024).toFixed(2)} MB</span>
+                  ) : (
+                    <div>
+                      <div className="text-xs font-bold text-neutral-900">
+                        Drag and drop your project ZIP file here
+                      </div>
+                      <div className="text-[11px] text-neutral-500 mt-1">
+                        Up to 50MB uncompressed · Contains index.html or package.json
+                      </div>
                     </div>
                   )}
                 </div>
+              </div>
+            )}
+
+            {/* Git url input */}
+            {sourceType === 'git' && (
+              <div className="space-y-3 pt-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700">
+                  Git Repository URL
+                </label>
+                <input
+                  type="url"
+                  value={gitUrl}
+                  onChange={(e) => setGitUrl(e.target.value)}
+                  placeholder="https://github.com/username/repository"
+                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-neutral-950 transition"
+                />
+                <p className="text-[11px] text-neutral-500">
+                  Public repositories are deployed without requiring tokens.
+                </p>
               </div>
             )}
 
@@ -821,85 +813,87 @@ export default function NewProjectPage() {
                 type="button"
                 disabled={sourceType === 'zip' && !zipFile}
                 onClick={() => setStep(3)}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 disabled:opacity-40 transition active:scale-98 shadow-xs"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
-                <span>Continue to Build Config</span>
+                <span>Continue to Build & Env</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
           </div>
         )}
 
-        {/* STEP 3: Framework, Build Presets & Environment Variables */}
+        {/* STEP 3: Build Settings & Environment Variables */}
         {step === 3 && (
-          <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
+          <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-8 shadow-2xs">
             <div>
-              <h2 className="text-base font-bold text-neutral-950">Step 3: Build Settings & Environment Variables</h2>
+              <h2 className="text-base font-bold text-neutral-950">Step 3: Framework & Build Settings</h2>
               <p className="text-xs text-neutral-500 mt-1">
                 Configure your framework build settings and environment variables synchronized to Cloud Engine.
               </p>
             </div>
 
-            {/* Framework Preset Card */}
+            {/* Build Settings Form */}
             <div className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-neutral-900 mb-1.5">
-                  Framework Preset
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-                  {Object.entries(VERCEL_FRAMEWORKS).map(([key, fw]) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => {
-                        setFramework(key);
-                        setBuildCommand(fw.defaultBuild);
-                        setOutputDirectory(fw.defaultOutput);
-                        setInstallCommand(fw.defaultInstall);
-                      }}
-                      className={`p-3 rounded-xl border flex items-center gap-2.5 transition cursor-pointer text-left ${
-                        framework === key
-                          ? 'border-neutral-950 bg-neutral-50 ring-1 ring-neutral-950 font-bold'
-                          : 'border-neutral-200 hover:border-neutral-300 bg-white text-neutral-700'
-                      }`}
-                    >
-                      <FrameworkIcon frameworkKey={key} className="w-4 h-4 shrink-0" />
-                      <span className="text-xs truncate">{fw.name}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Build and Output Overrides */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-4 bg-neutral-50 rounded-xl border border-neutral-200/80">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
-                    Build Command
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Framework Preset
                   </label>
-                  <input
-                    type="text"
-                    value={buildCommand}
-                    onChange={(e) => setBuildCommand(e.target.value)}
-                    placeholder="npm run build"
-                    className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                  />
+                  <div className="flex items-center gap-2 px-3 py-1 bg-neutral-50 border border-neutral-200 rounded-lg focus-within:border-neutral-950 transition">
+                    <div className="p-1 bg-white border border-neutral-200 rounded shrink-0 shadow-2xs">
+                      <FrameworkIcon frameworkKey={framework} className="w-5 h-5" />
+                    </div>
+                    <select
+                      value={framework}
+                      onChange={(e) => {
+                        const newFw = e.target.value;
+                        setFramework(newFw);
+                        const preset = VERCEL_FRAMEWORKS[newFw];
+                        if (preset) {
+                          setBuildCommand(preset.defaultBuild);
+                          setOutputDirectory(preset.defaultOutput);
+                          setInstallCommand(preset.defaultInstall);
+                        }
+                      }}
+                      className="w-full py-1.5 bg-transparent text-xs font-bold text-neutral-900 focus:outline-none cursor-pointer"
+                    >
+                      {Object.entries(VERCEL_FRAMEWORKS).map(([key, info]) => (
+                        <option key={key} value={key}>
+                          {info.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
                     Output Directory
                   </label>
                   <input
                     type="text"
                     value={outputDirectory}
                     onChange={(e) => setOutputDirectory(e.target.value)}
-                    placeholder="./ or out"
-                    className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
+                    placeholder=".next, dist, build, or ./"
+                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-semibold text-neutral-700 mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
+                    Build Command
+                  </label>
+                  <input
+                    type="text"
+                    value={buildCommand}
+                    onChange={(e) => setBuildCommand(e.target.value)}
+                    placeholder="next build, vite build, etc."
+                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700 mb-1.5">
                     Install Command
                   </label>
                   <input
@@ -907,91 +901,49 @@ export default function NewProjectPage() {
                     value={installCommand}
                     onChange={(e) => setInstallCommand(e.target.value)}
                     placeholder="npm install"
-                    className="w-full px-3 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
+                    className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
                   />
                 </div>
               </div>
             </div>
 
-            {/* ENVIRONMENT VARIABLES SECTION WITH AUTO-DETECTION */}
+            {/* ENVIRONMENT VARIABLES SECTION */}
             <div className="border-t border-neutral-200/80 pt-6 space-y-4">
-              {/* Hidden file input for .env files */}
-              <input
-                type="file"
-                ref={envFileInputRef}
-                accept=".env,.env.*,.txt,.example"
-                onChange={handleEnvFileUpload}
-                className="hidden"
-              />
-
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <div className="flex items-center gap-2">
                     <Lock className="w-4 h-4 text-neutral-900" />
                     <h3 className="text-sm font-bold text-neutral-950">Environment Variables</h3>
                   </div>
                   <p className="text-xs text-neutral-500 mt-0.5">
-                    Encrypted variables automatically injected into build and runtime environments.
+                    Encrypted variables injected into build and runtime environments.
                   </p>
                 </div>
-
-                {/* Auto-Detection & Import Action Buttons */}
-                <div className="flex items-center gap-2 flex-wrap">
+                <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleTriggerAutoDetect}
-                    disabled={isScanningEnv}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/80 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer disabled:opacity-50"
-                    title="Scan project code and .env.example files for environment variables"
+                    onClick={handleAutoDetectEnv}
+                    disabled={detectingEnv}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition disabled:opacity-50"
                   >
-                    <Zap className={`w-3.5 h-3.5 text-amber-600 ${isScanningEnv ? 'animate-spin' : ''}`} />
-                    <span>{isScanningEnv ? 'Scanning...' : '⚡ Auto-Detect Env'}</span>
+                    <Sparkles className={`w-3.5 h-3.5 ${detectingEnv ? 'animate-spin' : ''}`} />
+                    <span>{detectingEnv ? 'Detecting...' : 'Auto Detect Env'}</span>
                   </button>
-
-                  <button
-                    type="button"
-                    onClick={() => envFileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer"
-                    title="Upload a .env or .env.example file"
-                  >
-                    <FolderUp className="w-3.5 h-3.5 text-neutral-600" />
-                    <span>Upload .env</span>
-                  </button>
-
                   <button
                     type="button"
                     onClick={() => setShowBulkModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 text-neutral-700 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-700 hover:text-neutral-950 hover:underline"
                   >
-                    <FileText className="w-3.5 h-3.5 text-neutral-500" />
+                    <FileText className="w-3.5 h-3.5" />
                     <span>Paste .env</span>
                   </button>
                 </div>
               </div>
 
-              {/* Auto-Detection Notification Banner */}
-              {showDetectedBanner && autoDetectedCount > 0 && (
-                <div className="p-3.5 bg-amber-50/70 border border-amber-200 rounded-xl flex items-center justify-between gap-3 text-xs text-amber-900 animate-in fade-in duration-200">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <Zap className="w-4 h-4 text-amber-600 shrink-0" />
-                    <div className="min-w-0">
-                      <span className="font-bold">Auto-Detection Active: </span>
-                      <span>
-                        Found <strong className="font-mono">{autoDetectedCount}</strong> variable(s) from{' '}
-                        <span className="font-semibold underline underline-offset-2">
-                          {detectedSources.join(', ') || 'project code scan'}
-                        </span>
-                        . Check and configure values below.
-                      </span>
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => setShowDetectedBanner(false)}
-                    className="text-amber-700 hover:text-amber-950 font-bold text-xs p-1"
-                  >
-                    ✕
-                  </button>
+              {detectMessage && (
+                <div className="p-3 bg-neutral-900 text-white text-xs rounded-xl font-mono flex items-center justify-between shadow-md">
+                  <span>{detectMessage}</span>
+                  <button onClick={() => setDetectMessage(null)} className="text-neutral-400 hover:text-white ml-2">✕</button>
                 </div>
               )}
 
@@ -999,7 +951,7 @@ export default function NewProjectPage() {
               <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-3">
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
-                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Variable Key</label>
+                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Key</label>
                     <input
                       type="text"
                       value={newEnvKey}
@@ -1009,7 +961,7 @@ export default function NewProjectPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Variable Value</label>
+                    <label className="block text-[11px] font-semibold text-neutral-600 mb-1">Value</label>
                     <input
                       type="text"
                       value={newEnvValue}
@@ -1042,7 +994,7 @@ export default function NewProjectPage() {
                     type="button"
                     onClick={handleAddEnvVar}
                     disabled={!newEnvKey.trim()}
-                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 disabled:opacity-40 transition shrink-0 self-start sm:self-auto cursor-pointer shadow-xs"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 py-2 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 disabled:opacity-40 transition shrink-0 self-start sm:self-auto"
                   >
                     <Plus className="w-3.5 h-3.5" />
                     <span>Add Variable</span>
@@ -1051,7 +1003,7 @@ export default function NewProjectPage() {
               </div>
 
               {/* Active List of Variables */}
-              {envVars.length > 0 ? (
+              {envVars.length > 0 && (
                 <div className="border border-neutral-200 rounded-xl overflow-hidden divide-y divide-neutral-100 text-xs">
                   {envVars.map((env) => (
                     <div key={env.id} className="p-3.5 px-4 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-white hover:bg-neutral-50/50 min-w-0">
@@ -1059,14 +1011,9 @@ export default function NewProjectPage() {
                         <div className="flex items-center gap-2 font-mono flex-wrap break-all">
                           <span className="font-bold text-neutral-950">{env.key}</span>
                           <span className="text-neutral-400">=</span>
-                          <span className="text-neutral-700 break-all font-mono">
-                            {env.value ? (env.visible ? env.value : '••••••••••••••••') : <em className="text-neutral-400 font-sans text-[11px]">(empty value)</em>}
+                          <span className="text-neutral-700 break-all">
+                            {env.visible ? env.value : '••••••••••••••••'}
                           </span>
-                          {env.source && (
-                            <span className="text-[10px] font-sans font-medium px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 border border-amber-200">
-                              {env.source}
-                            </span>
-                          )}
                         </div>
                         <div className="flex items-center gap-1.5 flex-wrap">
                           {env.target.map((t) => (
@@ -1085,7 +1032,7 @@ export default function NewProjectPage() {
                               prev.map((item) => (item.id === env.id ? { ...item, visible: !item.visible } : item))
                             )
                           }
-                          className="p-1 text-neutral-400 hover:text-neutral-700 transition cursor-pointer"
+                          className="p-1 text-neutral-400 hover:text-neutral-700 transition"
                           title={env.visible ? 'Hide Value' : 'Show Value'}
                         >
                           {env.visible ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
@@ -1093,7 +1040,7 @@ export default function NewProjectPage() {
                         <button
                           type="button"
                           onClick={() => handleRemoveEnvVar(env.key)}
-                          className="p-1 text-neutral-400 hover:text-rose-600 transition cursor-pointer"
+                          className="p-1 text-neutral-400 hover:text-rose-600 transition"
                           title="Remove Variable"
                         >
                           <Trash2 className="w-3.5 h-3.5" />
@@ -1102,10 +1049,6 @@ export default function NewProjectPage() {
                     </div>
                   ))}
                 </div>
-              ) : (
-                <div className="p-4 bg-white border border-dashed border-neutral-200 rounded-xl text-center text-xs text-neutral-400">
-                  No environment variables added yet. Use Auto-Detect, upload a .env file, or enter keys above.
-                </div>
               )}
             </div>
 
@@ -1113,7 +1056,7 @@ export default function NewProjectPage() {
               <button
                 type="button"
                 onClick={() => setStep(2)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
@@ -1121,7 +1064,7 @@ export default function NewProjectPage() {
               <button
                 type="button"
                 onClick={() => setStep(4)}
-                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 shadow-xs cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98"
               >
                 <span>Continue to Review</span>
                 <ArrowRight className="w-3.5 h-3.5" />
@@ -1175,14 +1118,7 @@ export default function NewProjectPage() {
                 <div className="font-medium text-neutral-800 mt-0.5 flex items-center gap-2">
                   <span className="uppercase font-mono font-bold">{framework}</span>
                   <span>·</span>
-                  <span className="font-semibold text-neutral-900">
-                    {envVars.length} Variable{envVars.length !== 1 ? 's' : ''}
-                  </span>
-                  {autoDetectedCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 font-medium">
-                      ⚡ Auto-detected
-                    </span>
-                  )}
+                  <span>{envVars.length} Environment Variable{envVars.length !== 1 ? 's' : ''}</span>
                 </div>
               </div>
             </div>
@@ -1232,7 +1168,7 @@ export default function NewProjectPage() {
                 type="button"
                 disabled={deploying}
                 onClick={() => setStep(3)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition disabled:opacity-40 cursor-pointer"
+                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition disabled:opacity-40"
               >
                 <ArrowLeft className="w-3.5 h-3.5" />
                 <span>Back</span>
@@ -1243,7 +1179,7 @@ export default function NewProjectPage() {
                   type="button"
                   disabled={deploying}
                   onClick={startDeployment}
-                  className="inline-flex items-center px-6 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-95 disabled:opacity-50 shadow-sm cursor-pointer"
+                  className="inline-flex items-center px-6 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-95 disabled:opacity-50 shadow-sm"
                 >
                   <span>{deploying ? 'Deploying...' : 'Deploy Project'}</span>
                 </button>
@@ -1251,8 +1187,9 @@ export default function NewProjectPage() {
                 <button
                   type="button"
                   onClick={() => setShowSuccessModal(true)}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition cursor-pointer"
+                  className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition"
                 >
+                  <Sparkles className="w-3.5 h-3.5" />
                   <span>View Deployment Modal</span>
                 </button>
               )}
@@ -1266,19 +1203,16 @@ export default function NewProjectPage() {
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-150">
           <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-lg shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
-              <div className="flex items-center gap-2">
-                <FileText className="w-4 h-4 text-neutral-900" />
-                <h3 className="font-bold text-sm text-neutral-950">Bulk Import Environment Variables</h3>
-              </div>
+              <h3 className="font-bold text-sm text-neutral-950">Bulk Import Environment Variables</h3>
               <button
                 onClick={() => setShowBulkModal(false)}
-                className="text-neutral-400 hover:text-neutral-900 text-xs font-semibold cursor-pointer"
+                className="text-neutral-400 hover:text-neutral-900 text-xs font-semibold"
               >
                 ✕
               </button>
             </div>
             <p className="text-xs text-neutral-500">
-              Paste the raw contents of your <code className="text-neutral-900 font-bold">.env</code> or <code className="text-neutral-900 font-bold">.env.example</code> file below. Each line formatted as <code className="text-neutral-900">KEY=VALUE</code> will be parsed.
+              Paste the raw contents of your <code className="text-neutral-900">.env</code> file below. Each line formatted as <code className="text-neutral-900">KEY=VALUE</code> will be parsed.
             </p>
             <textarea
               rows={8}
@@ -1291,7 +1225,7 @@ export default function NewProjectPage() {
               <button
                 type="button"
                 onClick={() => setShowBulkModal(false)}
-                className="px-4 py-2 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-600 hover:bg-neutral-50 cursor-pointer"
+                className="px-4 py-2 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-600 hover:bg-neutral-50"
               >
                 Cancel
               </button>
@@ -1299,7 +1233,7 @@ export default function NewProjectPage() {
                 type="button"
                 onClick={handleBulkImportEnv}
                 disabled={!bulkEnvText.trim()}
-                className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 disabled:opacity-40 cursor-pointer shadow-xs"
+                className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 disabled:opacity-40"
               >
                 Import Variables
               </button>
@@ -1330,7 +1264,7 @@ export default function NewProjectPage() {
                   <button
                     type="button"
                     onClick={() => setPreviewDevice('desktop')}
-                    className={`p-1 rounded cursor-pointer ${
+                    className={`p-1 rounded ${
                       previewDevice === 'desktop' ? 'bg-white text-neutral-950 shadow-2xs font-bold' : ''
                     }`}
                     title="Desktop Preview"
@@ -1340,7 +1274,7 @@ export default function NewProjectPage() {
                   <button
                     type="button"
                     onClick={() => setPreviewDevice('mobile')}
-                    className={`p-1 rounded cursor-pointer ${
+                    className={`p-1 rounded ${
                       previewDevice === 'mobile' ? 'bg-white text-neutral-950 shadow-2xs font-bold' : ''
                     }`}
                     title="Mobile Preview"
@@ -1352,7 +1286,7 @@ export default function NewProjectPage() {
                 <button
                   type="button"
                   onClick={() => setShowSuccessModal(false)}
-                  className="w-7 h-7 rounded-lg hover:bg-neutral-200 text-neutral-500 hover:text-neutral-900 flex items-center justify-center text-sm font-semibold transition cursor-pointer"
+                  className="w-7 h-7 rounded-lg hover:bg-neutral-200 text-neutral-500 hover:text-neutral-900 flex items-center justify-center text-sm font-semibold transition"
                 >
                   ✕
                 </button>
@@ -1381,7 +1315,7 @@ export default function NewProjectPage() {
                   <button
                     type="button"
                     onClick={() => setIframeKey((k) => k + 1)}
-                    className="text-neutral-500 hover:text-neutral-900 p-0.5 cursor-pointer"
+                    className="text-neutral-500 hover:text-neutral-900 p-0.5"
                     title="Refresh Preview"
                   >
                     <RefreshCw className="w-3 h-3" />
@@ -1423,7 +1357,7 @@ export default function NewProjectPage() {
                     <button
                       type="button"
                       onClick={() => copyUrlToClipboard(finalUrl)}
-                      className="px-3 py-1.5 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-3 py-1.5 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 transition flex items-center gap-1.5"
                     >
                       {copiedSuccessUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                       <span>{copiedSuccessUrl ? 'Copied!' : 'Copy Link'}</span>
@@ -1432,7 +1366,7 @@ export default function NewProjectPage() {
                     <button
                       type="button"
                       onClick={() => setShowQrCode(!showQrCode)}
-                      className="p-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-700 hover:bg-neutral-50 transition cursor-pointer"
+                      className="p-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-700 hover:bg-neutral-50 transition"
                       title="Show Mobile QR Code"
                     >
                       <QrCode className="w-4 h-4" />
@@ -1442,7 +1376,7 @@ export default function NewProjectPage() {
                       href={finalUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="px-3.5 py-1.5 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition flex items-center gap-1.5 cursor-pointer"
+                      className="px-3.5 py-1.5 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition flex items-center gap-1.5"
                     >
                       <span>Visit Site</span>
                       <ExternalLink className="w-3.5 h-3.5" />
@@ -1479,7 +1413,7 @@ export default function NewProjectPage() {
                   if (createdProjectId) router.push(`/dashboard/projects/${createdProjectId}`);
                   else router.push('/dashboard');
                 }}
-                className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition cursor-pointer"
+                className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition"
               >
                 Go to Project Dashboard
               </button>
