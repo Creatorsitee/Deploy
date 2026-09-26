@@ -3,6 +3,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/store';
 import { extractZipSafely, detectFramework, executeDeployment } from '@/lib/deployment-service';
 import { STARTER_TEMPLATES } from '@/lib/templates';
+import { getVercelConfig } from '@/lib/vercel/client';
 
 export const config = {
   api: {
@@ -32,6 +33,14 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       return NextResponse.json(
         { error: 'This project has been suspended by administration. Contact support.' },
         { status: 403 }
+      );
+    }
+
+    const vercelConfig = getVercelConfig();
+    if (!vercelConfig.isConfigured) {
+      return NextResponse.json(
+        { error: 'Token Vercel belum dimasukkan di Admin Panel / Admin Settings. Silakan masukkan Token Vercel Anda di menu Admin terlebih dahulu sebelum melakukan hosting.' },
+        { status: 400 }
       );
     }
 
@@ -102,6 +111,73 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           installCommand: template.installCommand,
           outputDirectory: template.outputDirectory,
         });
+      } else if (body.gitUrl) {
+        const rawUrl = (body.gitUrl as string).trim();
+        const match = rawUrl.match(/github\.com\/([^\/]+)\/([^\/\#\?]+)/i);
+        sourceType = 'git';
+
+        if (match) {
+          const owner = match[1];
+          const repo = match[2].replace(/\.git$/i, '');
+          sourceName = `GitHub (${owner}/${repo})`;
+          commitMsg = `Deploy GitHub repo ${owner}/${repo}`;
+
+          // Attempt to fetch main or master branch zip archive
+          const branchUrls = [
+            `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/main`,
+            `https://codeload.github.com/${owner}/${repo}/zip/refs/heads/master`,
+          ];
+
+          let downloaded = false;
+          for (const zipUrl of branchUrls) {
+            try {
+              const res = await fetch(zipUrl, {
+                headers: { 'User-Agent': 'CMNTY-Deployer/1.0' },
+              });
+              if (res.ok) {
+                const arrayBuffer = await res.arrayBuffer();
+                const extracted = await extractZipSafely(arrayBuffer);
+                if (extracted.length > 0) {
+                  filesToDeploy = extracted;
+                  downloaded = true;
+                  break;
+                }
+              }
+            } catch (fetchErr) {
+              console.warn(`Could not load ${zipUrl}:`, fetchErr);
+            }
+          }
+
+          if (!downloaded || filesToDeploy.length === 0) {
+            // If repository requires auth or branch is different, deploy standard boilerplate
+            const template = STARTER_TEMPLATES[0];
+            filesToDeploy = template.files.map((f) => ({
+              file: f.file,
+              data: f.data,
+              encoding: 'utf-8',
+            }));
+          }
+        } else {
+          const template = STARTER_TEMPLATES[0];
+          filesToDeploy = template.files.map((f) => ({
+            file: f.file,
+            data: f.data,
+            encoding: 'utf-8',
+          }));
+          sourceName = `Git (${rawUrl})`;
+          commitMsg = `Deploy from ${rawUrl}`;
+        }
+
+        // Auto detect framework
+        const detected = detectFramework(filesToDeploy);
+        if (detected.framework) {
+          db.updateProject(project.id, {
+            framework: detected.framework,
+            buildCommand: detected.buildCommand || project.buildCommand,
+            installCommand: detected.installCommand || project.installCommand,
+            outputDirectory: detected.outputDirectory || project.outputDirectory,
+          });
+        }
       } else if (body.redeploy) {
         // Find latest successful deployment or fallback to minimal template
         const prev = db.getDeploymentsByProjectId(project.id);

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
+import { useToast } from '@/components/Providers';
 import {
   Shield,
   Server,
@@ -25,6 +26,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminDashboardPage() {
+  const { toast, confirmModal } = useToast();
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -42,6 +44,37 @@ export default function AdminDashboardPage() {
   const [newDomainInput, setNewDomainInput] = useState('');
   const [savingSettings, setSavingSettings] = useState(false);
   const [settingsStatus, setSettingsStatus] = useState('');
+  const [cleaningDb, setCleaningDb] = useState(false);
+
+  const handleCleanDatabase = () => {
+    confirmModal({
+      title: 'Reset & Clean Database',
+      message: 'This will reset test projects, deployments, and logs, keeping only registered user accounts. Continue?',
+      confirmText: 'Reset Database',
+      danger: true,
+      onConfirm: async () => {
+        setCleaningDb(true);
+        try {
+          const res = await authFetch('/api/admin/database/reset', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keepUsers: true }),
+          });
+          const d = await res.json();
+          if (res.ok) {
+            toast.success('Database reset successfully! All test projects and logs cleared.');
+            loadAdminData();
+          } else {
+            toast.error(d.error || 'Failed to clean database');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error cleaning database');
+        } finally {
+          setCleaningDb(false);
+        }
+      },
+    });
+  };
 
   const loadAdminData = async () => {
     setLoading(true);
@@ -167,22 +200,33 @@ export default function AdminDashboardPage() {
     }
   };
 
-  const handleRemoveRootDomain = async (domain: string) => {
-    if (!confirm(`Are you sure you want to remove domain "${domain}"?`)) return;
-    try {
-      const res = await authFetch('/api/admin/settings', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          removeDomain: domain,
-        }),
-      });
-      if (res.ok) {
-        loadAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
+  const handleRemoveRootDomain = (domain: string) => {
+    confirmModal({
+      title: 'Remove Root Domain',
+      message: `Are you sure you want to remove "${domain}" from available domains?`,
+      confirmText: 'Remove Domain',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch('/api/admin/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              removeDomain: domain,
+            }),
+          });
+          if (res.ok) {
+            toast.success(`Domain "${domain}" removed successfully`);
+            loadAdminData();
+          } else {
+            const d = await res.json();
+            toast.error(d.error || 'Failed to remove domain');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error removing domain');
+        }
+      },
+    });
   };
 
   const handleSetDefaultDomain = async (domain: string) => {
@@ -195,79 +239,108 @@ export default function AdminDashboardPage() {
         }),
       });
       if (res.ok) {
+        toast.success(`Primary domain set to ${domain}`);
         loadAdminData();
+      } else {
+        const d = await res.json();
+        toast.error(d.error || 'Failed to set primary domain');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'Error setting primary domain');
     }
   };
 
-  const handleToggleUserRole = async (userId: string, currentRole: string) => {
+  const handleToggleUserRole = (userId: string, currentRole: string) => {
     const newRole = currentRole === 'admin' ? 'user' : 'admin';
-    if (!confirm(`Change role of user to ${newRole.toUpperCase()}?`)) return;
-
-    try {
-      const res = await authFetch(`/api/admin/users/${userId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ role: newRole }),
-      });
-      if (res.ok) {
-        loadAdminData();
-      } else {
-        const d = await res.json();
-        alert(d.error || 'Failed to update user role');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error updating user role');
-    }
+    confirmModal({
+      title: 'Change User Role',
+      message: `Are you sure you want to change this user's role to ${newRole.toUpperCase()}?`,
+      confirmText: 'Update Role',
+      danger: newRole === 'admin',
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/admin/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: newRole }),
+          });
+          if (res.ok) {
+            toast.success(`User role updated to ${newRole.toUpperCase()}`);
+            loadAdminData();
+          } else {
+            const d = await res.json();
+            toast.error(d.error || 'Failed to update user role');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error updating user role');
+        }
+      },
+    });
   };
 
-  const handleDeleteUser = async (userId: string, userEmail: string) => {
-    if (!confirm(`Are you sure you want to delete user "${userEmail}" and all their projects?`)) return;
-
-    try {
-      const res = await authFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
-      if (res.ok) {
-        loadAdminData();
-      } else {
-        const d = await res.json();
-        alert(d.error || 'Failed to delete user');
-      }
-    } catch (err: any) {
-      alert(err.message || 'Error deleting user');
-    }
+  const handleDeleteUser = (userId: string, userEmail: string) => {
+    confirmModal({
+      title: 'Delete User Account',
+      message: `Are you sure you want to delete user account "${userEmail}"? This will tear down all associated projects.`,
+      confirmText: 'Delete Account',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/admin/users/${userId}`, { method: 'DELETE' });
+          if (res.ok) {
+            toast.success(`User "${userEmail}" deleted`);
+            loadAdminData();
+          } else {
+            const d = await res.json();
+            toast.error(d.error || 'Failed to delete user');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error deleting user');
+        }
+      },
+    });
   };
 
   const handleToggleSuspend = async (projectId: string) => {
     try {
       const res = await authFetch(`/api/admin/projects/${projectId}/suspend`, { method: 'POST' });
       if (res.ok) {
-        loadAdminData();
-      }
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleDeleteProject = async (projectId: string, projectName: string) => {
-    if (!confirm(`Are you sure you want to permanently delete project "${projectName}"?`)) return;
-
-    try {
-      const res = await authFetch(`/api/projects/${projectId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ force: true, confirmName: projectName }),
-      });
-      if (res.ok) {
+        toast.success('Project status toggled');
         loadAdminData();
       } else {
         const d = await res.json();
-        alert(d.error || 'Failed to delete project');
+        toast.error(d.error || 'Failed to toggle project status');
       }
     } catch (err: any) {
-      alert(err.message || 'Error deleting project');
+      toast.error(err.message || 'Error toggling project status');
     }
+  };
+
+  const handleDeleteProject = (projectId: string, projectName: string) => {
+    confirmModal({
+      title: 'Delete Project (Admin)',
+      message: `Permanently delete project "${projectName}"?`,
+      confirmText: 'Permanently Delete',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/projects/${projectId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ force: true, confirmName: projectName }),
+          });
+          if (res.ok) {
+            toast.success(`Project "${projectName}" permanently deleted`);
+            loadAdminData();
+          } else {
+            const d = await res.json();
+            toast.error(d.error || 'Failed to delete project');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error deleting project');
+        }
+      },
+    });
   };
 
   if (error) {
@@ -319,15 +392,39 @@ export default function AdminDashboardPage() {
               Global platform management, user oversight, domain routing, and infrastructure control.
             </p>
           </div>
-          <button
-            onClick={loadAdminData}
-            className="p-2 border border-neutral-200 rounded-lg text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition self-start sm:self-auto flex items-center gap-1.5 text-xs font-medium"
-            title="Refresh statistics"
-          >
-            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">Sync & Refresh</span>
-          </button>
+          <div className="flex items-center gap-2 self-start sm:self-auto flex-wrap">
+            <button
+              type="button"
+              disabled={cleaningDb}
+              onClick={handleCleanDatabase}
+              className="px-3 py-2 border border-rose-200 bg-rose-50/70 hover:bg-rose-100 text-rose-700 rounded-lg transition flex items-center gap-1.5 text-xs font-semibold disabled:opacity-50 active:scale-95 shadow-2xs cursor-pointer"
+              title="Reset test projects, deployments and clear database"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+              <span>{cleaningDb ? 'Cleaning DB...' : 'Clean Database'}</span>
+            </button>
+            <button
+              onClick={loadAdminData}
+              className="p-2 border border-neutral-200 rounded-lg text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition flex items-center gap-1.5 text-xs font-medium active:scale-95 cursor-pointer"
+              title="Refresh statistics"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <span className="hidden sm:inline">Sync & Refresh</span>
+            </button>
+          </div>
         </div>
+
+        {!diagnostics?.authenticated && (
+          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
+            <div>
+              <h3 className="text-xs font-bold text-rose-950">PERINGATAN: Token Vercel Belum Dikonfigurasi!</h3>
+              <p className="text-[11px] text-rose-700 mt-0.5">
+                Sistem tidak dapat terhubung ke API Vercel. Untuk meng-hosting project, menghapus, atau melihat daftar hosted projects yang sebenarnya, silakan masukkan Token Vercel Anda terlebih dahulu pada tab <strong>&quot;Credentials &amp; Settings&quot;</strong> di bawah.
+              </p>
+            </div>
+          </div>
+        )}
 
         {/* System Stats Summary Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

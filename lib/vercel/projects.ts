@@ -20,6 +20,7 @@ export interface VercelProjectResponse {
   accountId: string;
   createdAt: number;
   updatedAt: number;
+  paused?: boolean;
   targets?: {
     production?: {
       id: string;
@@ -107,6 +108,38 @@ export async function deleteVercelProject(nameOrId: string) {
   return vercelFetch(`/v10/projects/${encodeURIComponent(nameOrId)}`, {
     method: 'DELETE',
   });
+}
+
+/**
+ * Pause / Suspend a project on Vercel
+ */
+export async function pauseVercelProject(nameOrId: string) {
+  const res = await vercelFetch(`/v1/projects/${encodeURIComponent(nameOrId)}/pause`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    return vercelFetch(`/v9/projects/${encodeURIComponent(nameOrId)}`, {
+      method: 'PATCH',
+      body: { paused: true },
+    });
+  }
+  return res;
+}
+
+/**
+ * Unpause / Reactivate a project on Vercel
+ */
+export async function unpauseVercelProject(nameOrId: string) {
+  const res = await vercelFetch(`/v1/projects/${encodeURIComponent(nameOrId)}/unpause`, {
+    method: 'POST',
+  });
+  if (!res.ok) {
+    return vercelFetch(`/v9/projects/${encodeURIComponent(nameOrId)}`, {
+      method: 'PATCH',
+      body: { paused: false },
+    });
+  }
+  return res;
 }
 
 /**

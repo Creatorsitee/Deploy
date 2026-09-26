@@ -19,10 +19,9 @@ export interface ExtractedFile {
 export async function extractZipSafely(buffer: ArrayBuffer | Buffer): Promise<ExtractedFile[]> {
   const zip = new JSZip();
   const loadedZip = await zip.loadAsync(buffer);
-  const files: ExtractedFile[] = [];
 
   const MAX_TOTAL_SIZE = 50 * 1024 * 1024; // 50MB max total uncompressed
-  const MAX_FILES = 2000;
+  const MAX_FILES = 3000;
   let totalSize = 0;
 
   const entries = Object.keys(loadedZip.files);
@@ -31,9 +30,10 @@ export async function extractZipSafely(buffer: ArrayBuffer | Buffer): Promise<Ex
     throw new Error(`ZIP archive exceeds maximum file count limit (${MAX_FILES})`);
   }
 
+  const rawEntries: { path: string; uint8: Uint8Array; isText: boolean }[] = [];
+
   for (const relativePath of entries) {
     const zipEntry = loadedZip.files[relativePath];
-
     if (zipEntry.dir) continue;
 
     // Security check: Path traversal protection
@@ -45,20 +45,23 @@ export async function extractZipSafely(buffer: ArrayBuffer | Buffer): Promise<Ex
       normalized === '..' ||
       normalized.startsWith('./../')
     ) {
-      throw new Error(`Security validation failed: Illegal path traversal detected in ZIP entry (${relativePath})`);
+      continue;
     }
 
     // Skip git, mac os metadata, and node_modules
     if (
       normalized.startsWith('.git/') ||
+      normalized.includes('/.git/') ||
       normalized.startsWith('__MACOSX/') ||
+      normalized.includes('/__MACOSX/') ||
       normalized.includes('/.DS_Store') ||
-      normalized.includes('node_modules/')
+      normalized === '.DS_Store' ||
+      normalized.startsWith('node_modules/') ||
+      normalized.includes('/node_modules/')
     ) {
       continue;
     }
 
-    // Read file content
     const uint8 = await zipEntry.async('uint8array');
     totalSize += uint8.length;
 
@@ -66,30 +69,51 @@ export async function extractZipSafely(buffer: ArrayBuffer | Buffer): Promise<Ex
       throw new Error(`ZIP archive exceeds maximum total uncompressed size (50MB)`);
     }
 
-    // Decide whether to store as text or base64
-    const isText = /\.(html|htm|css|js|jsx|ts|tsx|json|md|txt|svg|xml|yaml|yml)$/i.test(normalized);
+    const isText = /\.(html|htm|css|js|jsx|ts|tsx|json|md|txt|svg|xml|yaml|yml|env|env\..*)$/i.test(normalized);
+    rawEntries.push({ path: normalized, uint8, isText });
+  }
 
-    if (isText) {
-      const text = new TextDecoder('utf-8').decode(uint8);
+  if (rawEntries.length === 0) {
+    throw new Error('ZIP archive is empty or contains no valid files');
+  }
+
+  // Detect single common root folder wrapper (e.g. 'my-app/index.html' or 'repo-main/package.json')
+  let commonPrefix = '';
+  const firstPath = rawEntries[0].path;
+  if (firstPath.includes('/')) {
+    const candidatePrefix = firstPath.substring(0, firstPath.indexOf('/') + 1);
+    const allShare = rawEntries.every((f) => f.path.startsWith(candidatePrefix));
+    if (allShare) {
+      commonPrefix = candidatePrefix;
+    }
+  }
+
+  const files: ExtractedFile[] = [];
+  for (const entry of rawEntries) {
+    const cleanPath = commonPrefix ? entry.path.substring(commonPrefix.length) : entry.path;
+    if (!cleanPath) continue;
+
+    if (entry.isText) {
+      const text = new TextDecoder('utf-8').decode(entry.uint8);
       files.push({
-        file: normalized,
+        file: cleanPath,
         data: text,
         encoding: 'utf-8',
-        size: uint8.length,
+        size: entry.uint8.length,
       });
     } else {
-      const base64 = Buffer.from(uint8).toString('base64');
+      const base64 = Buffer.from(entry.uint8).toString('base64');
       files.push({
-        file: normalized,
+        file: cleanPath,
         data: base64,
         encoding: 'base64',
-        size: uint8.length,
+        size: entry.uint8.length,
       });
     }
   }
 
   if (files.length === 0) {
-    throw new Error('ZIP archive is empty or contains no valid files');
+    throw new Error('ZIP archive contains no valid files after processing');
   }
 
   return files;
@@ -233,18 +257,30 @@ export async function executeDeployment(params: {
 
   db.createDeployment(initialDeployment);
 
-  // If Vercel API is not configured on this server, record error with transparent instructions
+  // If Vercel API is not configured, deployment fails immediately. Simulated hosting has been completely removed.
   if (!vercelConfig.isConfigured) {
-    const errorMsg =
-      'Vercel API token is not configured on the server. Please set VERCEL_TOKEN in .env or configure it via Admin Settings.';
-    db.appendDeploymentLog(deploymentId, `[ERROR] ${errorMsg}`);
-    db.updateDeployment(deploymentId, {
+    const duration = Date.now() - startTime;
+    db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] [DEPLOYMENT ERROR] Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.`);
+    
+    const failedDeployment = db.updateDeployment(deploymentId, {
       status: 'ERROR',
-      errorMessage: errorMsg,
+      errorMessage: 'Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.',
       completedAt: new Date().toISOString(),
-      durationMs: Date.now() - startTime,
+      durationMs: duration,
     });
-    return db.getDeploymentById(deploymentId)!;
+
+    db.addAuditLog({
+      userId,
+      userEmail: 'system',
+      action: 'DEPLOYMENT_FAILURE',
+      metadata: {
+        projectId: project.id,
+        deploymentId,
+        error: 'Vercel API Token is not configured',
+      },
+    });
+
+    return failedDeployment!;
   }
 
   try {

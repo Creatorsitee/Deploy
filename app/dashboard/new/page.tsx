@@ -4,9 +4,14 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
-import JSZip from 'jszip';
 import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
+import { useToast } from '@/components/Providers';
+import {
+  detectEnvFromZip,
+  parseEnvString,
+  detectRecommendedEnvForFramework,
+} from '@/lib/env-detector';
 import {
   UploadCloud,
   FileArchive,
@@ -47,6 +52,7 @@ interface EnvVarItem {
 
 export default function NewProjectPage() {
   const router = useRouter();
+  const { toast } = useToast();
 
   // Wizard step
   const [step, setStep] = useState<number>(1);
@@ -56,6 +62,7 @@ export default function NewProjectPage() {
   const [projectSlug, setProjectSlug] = useState('');
   const [availableDomains, setAvailableDomains] = useState<string[]>(['cmnty.biz.id']);
   const [selectedDomain, setSelectedDomain] = useState<string>('cmnty.biz.id');
+  const [isVercelConfigured, setIsVercelConfigured] = useState<boolean>(true);
 
   // Step 2: Source Code
   const [sourceType, setSourceType] = useState<'zip' | 'template' | 'git'>('template');
@@ -87,94 +94,55 @@ export default function NewProjectPage() {
     setDetectingEnv(true);
     setDetectMessage(null);
     try {
-      let foundVars: { key: string; value: string; target: ('production' | 'preview' | 'development')[] }[] = [];
+      let foundVars: { key: string; value: string; target?: ('production' | 'preview' | 'development')[] }[] = [];
+      let summaryText = '';
 
       if (sourceType === 'zip' && zipFile) {
-        const zip = new JSZip();
-        const zipContent = await zip.loadAsync(zipFile);
-        
-        let envFileText = '';
-        let foundEnvFilename = '';
-
-        for (const [relativePath, zipEntry] of Object.entries(zipContent.files)) {
-          const lowerPath = relativePath.toLowerCase();
-          if (!zipEntry.dir && (lowerPath.endsWith('.env') || lowerPath.includes('.env.') || lowerPath.endsWith('env.example'))) {
-            foundEnvFilename = relativePath;
-            envFileText = await zipEntry.async('text');
-            break;
-          }
-        }
-
-        if (envFileText) {
-          const lines = envFileText.split('\n');
-          for (const line of lines) {
-            const trimmed = line.trim();
-            if (!trimmed || trimmed.startsWith('#')) continue;
-            const eqIndex = trimmed.indexOf('=');
-            if (eqIndex > 0) {
-              const key = trimmed.substring(0, eqIndex).trim().replace(/^export\s+/, '');
-              let val = trimmed.substring(eqIndex + 1).trim();
-              if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
-                val = val.slice(1, -1);
-              }
-              if (key) {
-                foundVars.push({ key, value: val, target: ['production', 'preview', 'development'] });
-              }
-            }
-          }
-          setDetectMessage(`✨ Auto-detected variables from "${foundEnvFilename}"!`);
-        } else {
-          if (zipContent.files['package.json'] || Object.keys(zipContent.files).some(k => k.endsWith('package.json'))) {
-            foundVars.push(
-              { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] },
-              { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
-            );
-            setDetectMessage('✨ Auto-detected Node.js project. Added runtime variables.');
-          } else {
-            foundVars.push(
-              { key: 'NEXT_PUBLIC_APP_URL', value: 'https://' + (projectSlug || 'my-app') + '.cmnty.biz.id', target: ['production', 'preview', 'development'] },
-              { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] }
-            );
-            setDetectMessage('✨ Auto-detected standard static project structure.');
-          }
+        const detection = await detectEnvFromZip(zipFile);
+        foundVars = detection.variables;
+        summaryText = detection.summary;
+        if (detection.detectedFramework) {
+          setFramework(detection.detectedFramework);
         }
       } else {
-        if (selectedTemplateId === 'nextjs-starter') {
-          foundVars.push(
-            { key: 'NEXT_PUBLIC_APP_NAME', value: projectName || 'CMNTY Next App', target: ['production', 'preview', 'development'] },
-            { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] }
-          );
-        } else if (selectedTemplateId === 'vite-react') {
-          foundVars.push(
-            { key: 'VITE_APP_TITLE', value: projectName || 'CMNTY Vite App', target: ['production', 'preview', 'development'] },
-            { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
-          );
-        } else {
-          foundVars.push(
-            { key: 'APP_ENV', value: 'production', target: ['production', 'preview', 'development'] },
-            { key: 'PORT', value: '3000', target: ['production', 'preview', 'development'] }
-          );
-        }
-        setDetectMessage(`✨ Auto-detected recommended variables for "${selectedTemplateId}".`);
+        const fullDomain = `${projectSlug || 'my-project'}.${selectedDomain}`;
+        foundVars = detectRecommendedEnvForFramework(framework, projectName, fullDomain);
+        summaryText = `Detected recommended variables for ${framework.toUpperCase()} framework.`;
       }
 
       if (foundVars.length > 0) {
+        let addedCount = 0;
         setEnvVars((prev) => {
-          const existingKeys = new Set(prev.map(e => e.key));
-          const newItems = foundVars.filter(v => !existingKeys.has(v.key)).map(v => ({
-            ...v,
-            id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            visible: false
-          }));
+          const existingKeys = new Set(prev.map((e) => e.key));
+          const newItems = foundVars
+            .filter((v) => !existingKeys.has(v.key))
+            .map((v) => ({
+              id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+              key: v.key,
+              value: v.value,
+              target: v.target || ['production', 'preview', 'development'],
+              visible: false,
+            }));
+          addedCount = newItems.length;
           return [...prev, ...newItems];
         });
+
+        const msg = addedCount > 0
+          ? `Added ${addedCount} environment variable(s).`
+          : 'Environment variables are already up to date.';
+        setDetectMessage(`✨ ${summaryText} ${msg}`);
+        toast.success(`${summaryText} ${msg}`);
+      } else {
+        toast.info('No new environment variables detected.');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error auto-detecting env:', err);
-      setDetectMessage('❌ Failed to parse environment files from archive.');
+      const errMsg = err?.message || 'Failed to detect environment variables.';
+      setDetectMessage(`❌ ${errMsg}`);
+      toast.error(errMsg);
     } finally {
       setDetectingEnv(false);
-      setTimeout(() => setDetectMessage(null), 5000);
+      setTimeout(() => setDetectMessage(null), 6000);
     }
   };
 
@@ -193,20 +161,39 @@ export default function NewProjectPage() {
   const [iframeKey, setIframeKey] = useState(0);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [userProjectCount, setUserProjectCount] = useState<number>(0);
+  const [maxProjectsAllowed, setMaxProjectsAllowed] = useState<number>(3);
+  const [isLimitReached, setIsLimitReached] = useState(false);
 
-  // Load configured base domains from system config
+  // Load configured base domains and project counts from system config
   useEffect(() => {
     async function loadConfig() {
       try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-          const data = await res.json();
+        const [configRes, projectsRes] = await Promise.all([
+          fetch('/api/config'),
+          authFetch('/api/projects').catch(() => null),
+        ]);
+
+        if (configRes.ok) {
+          const data = await configRes.json();
+          if (data.isVercelConfigured !== undefined) {
+            setIsVercelConfigured(data.isVercelConfigured);
+          }
           if (Array.isArray(data.availableDomains) && data.availableDomains.length > 0) {
             setAvailableDomains(data.availableDomains);
             setSelectedDomain(data.baseDomain || data.availableDomains[0]);
           } else if (data.baseDomain) {
             setAvailableDomains([data.baseDomain]);
             setSelectedDomain(data.baseDomain);
+          }
+        }
+
+        if (projectsRes && projectsRes.ok) {
+          const pData = await projectsRes.json();
+          const count = Array.isArray(pData.projects) ? pData.projects.length : 0;
+          setUserProjectCount(count);
+          if (count >= 3) {
+            setIsLimitReached(true);
           }
         }
       } catch (e) {
@@ -331,32 +318,19 @@ export default function NewProjectPage() {
   const handleBulkImportEnv = () => {
     if (!bulkEnvText.trim()) return;
 
-    const lines = bulkEnvText.split('\n');
-    const newItems: EnvVarItem[] = [];
+    const parsed = parseEnvString(bulkEnvText);
+    if (parsed.length === 0) {
+      toast.warning('No valid KEY=VALUE pairs found in pasted text.');
+      return;
+    }
 
-    lines.forEach((line) => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) return;
-
-      const equalIdx = trimmed.indexOf('=');
-      if (equalIdx > 0) {
-        const key = trimmed.substring(0, equalIdx).trim().toUpperCase().replace(/[^A-Z0-9_]/g, '_');
-        let value = trimmed.substring(equalIdx + 1).trim();
-        // Remove surrounding quotes if present
-        if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
-          value = value.slice(1, -1);
-        }
-        if (key) {
-          newItems.push({
-            id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-            key,
-            value,
-            target: ['production', 'preview', 'development'],
-            visible: false,
-          });
-        }
-      }
-    });
+    const newItems: EnvVarItem[] = parsed.map((item) => ({
+      id: `env_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      key: item.key,
+      value: item.value,
+      target: item.target || ['production', 'preview', 'development'],
+      visible: false,
+    }));
 
     setEnvVars((prev) => {
       const existingKeys = new Set(newItems.map((n) => n.key));
@@ -364,6 +338,7 @@ export default function NewProjectPage() {
       return [...filtered, ...newItems];
     });
 
+    toast.success(`Imported ${newItems.length} environment variable(s)!`);
     setBulkEnvText('');
     setShowBulkModal(false);
   };
@@ -438,11 +413,14 @@ export default function NewProjectPage() {
           body: JSON.stringify({ templateId: selectedTemplateId }),
         });
       } else {
-        // Git template
+        // Git repository deployment
         deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId: 'minimal-portfolio' }),
+          body: JSON.stringify({
+            gitUrl: gitUrl.trim(),
+            templateId: 'minimal-portfolio',
+          }),
         });
       }
 
@@ -561,6 +539,16 @@ export default function NewProjectPage() {
         {/* STEP 1: Project Name & Multi-Domain Selection */}
         {step === 1 && (
           <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
+            {isLimitReached && (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-xl flex items-start gap-3 text-xs text-amber-900">
+                <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600" />
+                <div className="space-y-1">
+                  <div className="font-bold">Project Limit Reached ({userProjectCount}/3 Projects)</div>
+                  <p>You have reached the maximum allowed 3 hosted projects. Please delete an existing project before deploying a new one.</p>
+                </div>
+              </div>
+            )}
+
             <div>
               <h2 className="text-base font-bold text-neutral-950">Step 1: Project Details & Domain</h2>
               <p className="text-xs text-neutral-500 mt-1">
@@ -576,10 +564,11 @@ export default function NewProjectPage() {
                 <input
                   type="text"
                   required
+                  disabled={isLimitReached}
                   value={projectName}
                   onChange={handleNameChange}
                   placeholder="My Next.js App"
-                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-neutral-950 transition"
+                  className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-neutral-950 transition disabled:opacity-50"
                 />
               </div>
 
@@ -593,20 +582,22 @@ export default function NewProjectPage() {
                     <input
                       type="text"
                       required
+                      disabled={isLimitReached}
                       value={projectSlug}
                       onChange={(e) =>
                         setProjectSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))
                       }
                       placeholder="my-project"
-                      className="w-full text-xs font-mono font-bold text-neutral-900 bg-transparent focus:outline-none"
+                      className="w-full text-xs font-mono font-bold text-neutral-900 bg-transparent focus:outline-none disabled:opacity-50"
                     />
                   </div>
                   <div className="flex items-center bg-neutral-100 border-t sm:border-t-0 sm:border-l border-neutral-200 px-3 py-2">
                     <span className="text-xs font-mono text-neutral-500 mr-1.5 font-bold">.</span>
                     <select
                       value={selectedDomain}
+                      disabled={isLimitReached}
                       onChange={(e) => setSelectedDomain(e.target.value)}
-                      className="bg-transparent text-xs font-mono font-bold text-neutral-900 focus:outline-none cursor-pointer"
+                      className="bg-transparent text-xs font-mono font-bold text-neutral-900 focus:outline-none cursor-pointer disabled:opacity-50"
                     >
                       {availableDomains.map((dom) => (
                         <option key={dom} value={dom}>
@@ -627,7 +618,7 @@ export default function NewProjectPage() {
             <div className="pt-4 border-t border-neutral-100 flex justify-end">
               <button
                 type="button"
-                disabled={!projectName.trim() || !projectSlug.trim() || projectSlug.length < 3}
+                disabled={isLimitReached || !projectName.trim() || !projectSlug.trim() || projectSlug.length < 3}
                 onClick={() => setStep(2)}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
@@ -812,7 +803,10 @@ export default function NewProjectPage() {
               <button
                 type="button"
                 disabled={sourceType === 'zip' && !zipFile}
-                onClick={() => setStep(3)}
+                onClick={() => {
+                  setStep(3);
+                  handleAutoDetectEnv();
+                }}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
                 <span>Continue to Build & Env</span>
@@ -922,15 +916,6 @@ export default function NewProjectPage() {
                 <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <button
                     type="button"
-                    onClick={handleAutoDetectEnv}
-                    disabled={detectingEnv}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition disabled:opacity-50"
-                  >
-                    <Sparkles className={`w-3.5 h-3.5 ${detectingEnv ? 'animate-spin' : ''}`} />
-                    <span>{detectingEnv ? 'Detecting...' : 'Auto Detect Env'}</span>
-                  </button>
-                  <button
-                    type="button"
                     onClick={() => setShowBulkModal(true)}
                     className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-700 hover:text-neutral-950 hover:underline"
                   >
@@ -939,13 +924,6 @@ export default function NewProjectPage() {
                   </button>
                 </div>
               </div>
-
-              {detectMessage && (
-                <div className="p-3 bg-neutral-900 text-white text-xs rounded-xl font-mono flex items-center justify-between shadow-md">
-                  <span>{detectMessage}</span>
-                  <button onClick={() => setDetectMessage(null)} className="text-neutral-400 hover:text-white ml-2">✕</button>
-                </div>
-              )}
 
               {/* Add Variable Input Box */}
               <div className="p-4 bg-neutral-50 rounded-xl border border-neutral-200 space-y-3">
@@ -1177,7 +1155,7 @@ export default function NewProjectPage() {
               {!finalUrl ? (
                 <button
                   type="button"
-                  disabled={deploying}
+                  disabled={deploying || isLimitReached}
                   onClick={startDeployment}
                   className="inline-flex items-center px-6 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-95 disabled:opacity-50 shadow-sm"
                 >
@@ -1186,11 +1164,16 @@ export default function NewProjectPage() {
               ) : (
                 <button
                   type="button"
-                  onClick={() => setShowSuccessModal(true)}
-                  className="inline-flex items-center gap-1.5 px-6 py-2.5 bg-emerald-600 text-white text-xs font-semibold rounded-lg hover:bg-emerald-700 transition"
+                  onClick={() => {
+                    if (createdProjectId) {
+                      router.push(`/dashboard/projects/${createdProjectId}`);
+                    } else {
+                      router.push('/dashboard');
+                    }
+                  }}
+                  className="inline-flex items-center px-6 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-95 shadow-sm"
                 >
-                  <Sparkles className="w-3.5 h-3.5" />
-                  <span>View Deployment Modal</span>
+                  <span>Go to Project Management</span>
                 </button>
               )}
             </div>
@@ -1242,10 +1225,10 @@ export default function NewProjectPage() {
         </div>
       )}
 
-      {/* SUCCESS CELEBRATION POPUP MODAL WITH SCREENSHOT / LIVE PREVIEW MOCKUP */}
+      {/* SIMPLIFIED SUCCESS CELEBRATION POPUP MODAL */}
       {showSuccessModal && finalUrl && (
         <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-3 sm:p-6 overflow-y-auto animate-in fade-in zoom-in-95 duration-200">
-          <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-3xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
+          <div className="bg-white border border-neutral-200 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden flex flex-col my-auto max-h-[92vh]">
             {/* Modal Header */}
             <div className="p-4 sm:p-5 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/70">
               <div className="flex items-center gap-2.5">
@@ -1254,169 +1237,80 @@ export default function NewProjectPage() {
                 </div>
                 <div>
                   <h3 className="font-bold text-sm sm:text-base text-neutral-950">Deployment Successful!</h3>
-                  <p className="text-[11px] text-neutral-500">Your site is live on high-performance Cloud infrastructure.</p>
+                  <p className="text-[11px] text-neutral-500">
+                    Your site is live on. Wait 1-5 minutes for the project and domain to be active.
+                  </p>
                 </div>
               </div>
 
-              <div className="flex items-center gap-2">
-                {/* Desktop / Mobile Toggle */}
-                <div className="hidden sm:flex items-center border border-neutral-200 rounded-lg p-0.5 bg-neutral-100 text-neutral-600">
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDevice('desktop')}
-                    className={`p-1 rounded ${
-                      previewDevice === 'desktop' ? 'bg-white text-neutral-950 shadow-2xs font-bold' : ''
-                    }`}
-                    title="Desktop Preview"
-                  >
-                    <Laptop className="w-3.5 h-3.5" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setPreviewDevice('mobile')}
-                    className={`p-1 rounded ${
-                      previewDevice === 'mobile' ? 'bg-white text-neutral-950 shadow-2xs font-bold' : ''
-                    }`}
-                    title="Mobile Preview"
-                  >
-                    <Smartphone className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => setShowSuccessModal(false)}
-                  className="w-7 h-7 rounded-lg hover:bg-neutral-200 text-neutral-500 hover:text-neutral-900 flex items-center justify-center text-sm font-semibold transition"
-                >
-                  ✕
-                </button>
-              </div>
-            </div>
-
-            {/* Modal Body: Browser Mockup Frame with Live Iframe */}
-            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1 bg-neutral-100/40">
-              {/* Browser Window Mockup */}
-              <div className="border border-neutral-200/80 rounded-xl overflow-hidden bg-white shadow-xs mx-auto transition-all"
-                style={{ maxWidth: previewDevice === 'mobile' ? '375px' : '100%' }}
-              >
-                {/* Browser top navigation bar */}
-                <div className="bg-neutral-100 px-3 py-2 border-b border-neutral-200 flex items-center gap-2">
-                  <div className="flex items-center gap-1.5">
-                    <div className="w-2.5 h-2.5 rounded-full bg-rose-400" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-                    <div className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                  </div>
-
-                  <div className="flex-1 flex items-center bg-white px-2.5 py-1 rounded-md border border-neutral-200 text-[11px] font-mono text-neutral-700 min-w-0 mx-1">
-                    <Lock className="w-3 h-3 text-emerald-600 mr-1.5 shrink-0" />
-                    <span className="truncate">{finalUrl}</span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setIframeKey((k) => k + 1)}
-                    className="text-neutral-500 hover:text-neutral-900 p-0.5"
-                    title="Refresh Preview"
-                  >
-                    <RefreshCw className="w-3 h-3" />
-                  </button>
-                </div>
-
-                {/* Iframe Live Preview */}
-                <div className="relative bg-neutral-50 w-full overflow-hidden" style={{ height: previewDevice === 'mobile' ? '400px' : '320px' }}>
-                  <iframe
-                    key={iframeKey}
-                    src={finalUrl}
-                    title="Live Website Preview"
-                    className="w-full h-full border-0"
-                    sandbox="allow-scripts allow-same-origin allow-forms"
-                    loading="eager"
-                  />
-                </div>
-              </div>
-
-              {/* URL & Quick Actions Card */}
-              <div className="p-4 bg-white border border-neutral-200/80 rounded-xl space-y-3">
-                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                  <div className="min-w-0">
-                    <div className="text-[10px] uppercase tracking-wider font-semibold text-neutral-400">
-                      Live Production Domain
-                    </div>
-                    <a
-                      href={finalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="font-mono text-sm font-bold text-neutral-900 hover:underline flex items-center gap-1 truncate"
-                    >
-                      <span className="truncate">{finalUrl}</span>
-                      <ExternalLink className="w-3.5 h-3.5 shrink-0 opacity-50" />
-                    </a>
-                  </div>
-
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => copyUrlToClipboard(finalUrl)}
-                      className="px-3 py-1.5 border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-700 hover:bg-neutral-50 transition flex items-center gap-1.5"
-                    >
-                      {copiedSuccessUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                      <span>{copiedSuccessUrl ? 'Copied!' : 'Copy Link'}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setShowQrCode(!showQrCode)}
-                      className="p-1.5 border border-neutral-200 rounded-lg text-xs text-neutral-700 hover:bg-neutral-50 transition"
-                      title="Show Mobile QR Code"
-                    >
-                      <QrCode className="w-4 h-4" />
-                    </button>
-
-                    <a
-                      href={finalUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="px-3.5 py-1.5 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition flex items-center gap-1.5"
-                    >
-                      <span>Visit Site</span>
-                      <ExternalLink className="w-3.5 h-3.5" />
-                    </a>
-                  </div>
-                </div>
-
-                {/* Collapsible QR Code box */}
-                {showQrCode && (
-                  <div className="pt-3 border-t border-neutral-100 flex flex-col items-center justify-center p-2 text-center space-y-2">
-                    <div className="p-2 bg-white border border-neutral-200 rounded-xl shadow-xs">
-                      {/* Generates quick QR code via public SVG service */}
-                      <img
-                        src={`https://api.qrserver.com/v1/create-qr-code/?size=140x140&data=${encodeURIComponent(
-                          finalUrl
-                        )}`}
-                        alt="QR Code"
-                        className="w-28 h-28"
-                      />
-                    </div>
-                    <span className="text-[11px] text-neutral-500">Scan with your phone to open instantly on mobile</span>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div className="p-4 border-t border-neutral-100 flex items-center justify-between bg-neutral-50/70">
-              <span className="text-[11px] text-neutral-500 font-medium">SSL Provisioned · DNS Verified</span>
               <button
                 type="button"
-                onClick={() => {
-                  setShowSuccessModal(false);
-                  if (createdProjectId) router.push(`/dashboard/projects/${createdProjectId}`);
-                  else router.push('/dashboard');
-                }}
-                className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition"
+                onClick={() => setShowSuccessModal(false)}
+                className="w-7 h-7 rounded-lg hover:bg-neutral-200 text-neutral-500 hover:text-neutral-900 flex items-center justify-center text-sm font-semibold transition"
               >
-                Go to Project Dashboard
+                ✕
               </button>
+            </div>
+
+            {/* Modal Body: Screenshot Thumbnail & URL Display */}
+            <div className="p-4 sm:p-6 space-y-4 overflow-y-auto flex-1">
+              {/* Thumbnail Container using requested ssweb API */}
+              <div className="rounded-xl overflow-hidden border border-neutral-200/80 bg-neutral-950 shadow-sm relative min-h-[220px] flex items-center justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  key={iframeKey}
+                  src={`https://api.cmnty.eu.cc/tools/ssweb?url=${encodeURIComponent(
+                    finalUrl
+                  )}&device=desktop&theme=light&fullPage=false&apikey=oji-10081`}
+                  alt={`Screenshot of ${finalUrl}`}
+                  className="w-full h-auto max-h-[360px] object-cover object-top"
+                  loading="eager"
+                  onError={(e) => {
+                    const target = e.currentTarget;
+                    if (!target.src.includes('mshots')) {
+                      target.src = `https://s0.wp.com/mshots/v1/${encodeURIComponent(finalUrl)}?w=1200`;
+                    }
+                  }}
+                />
+              </div>
+
+              {/* URL & Action Controls */}
+              <div className="p-4 bg-neutral-50 border border-neutral-200/80 rounded-xl space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[10px] uppercase tracking-wider font-semibold text-neutral-400 mb-0.5">
+                      Live Project URL
+                    </div>
+                    <a
+                      href={finalUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="font-mono text-xs sm:text-sm font-bold text-neutral-900 hover:underline truncate block"
+                    >
+                      {finalUrl}
+                    </a>
+                  </div>
+
+                  {/* Buttons Copy URL and Visit Site removed as requested */}
+                </div>
+
+                <div className="pt-2 border-t border-neutral-200/60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setShowSuccessModal(false);
+                      if (createdProjectId) {
+                        router.push(`/dashboard/projects/${createdProjectId}`);
+                      } else {
+                        router.push('/dashboard');
+                      }
+                    }}
+                    className="w-full py-2.5 bg-neutral-900 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition text-center shadow-xs"
+                  >
+                    Go to Project Management
+                  </button>
+                </div>
+              </div>
             </div>
           </div>
         </div>

@@ -76,13 +76,22 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
+    const config = getVercelConfig();
+    if (!config.isConfigured) {
+      return NextResponse.json(
+        { error: 'Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.' },
+        { status: 400 }
+      );
+    }
+
     const sysConfig = db.getSystemConfig();
     const userProjects = db.getProjectsByUserId(user.id);
+    const maxProjects = sysConfig.maxProjectsPerUser || 3;
 
-    if (user.role !== 'admin' && userProjects.length >= sysConfig.maxProjectsPerUser) {
+    if (user.role !== 'admin' && userProjects.length >= maxProjects) {
       return NextResponse.json(
         {
-          error: `Project limit reached. Free accounts are limited to ${sysConfig.maxProjectsPerUser} active projects.`,
+          error: `Project limit reached. Accounts are limited to ${maxProjects} active projects. Please delete an existing project before creating a new one.`,
         },
         { status: 403 }
       );

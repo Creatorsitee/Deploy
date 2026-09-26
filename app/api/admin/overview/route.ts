@@ -35,58 +35,87 @@ export async function GET() {
       }
     }
 
-    // Map all projects
+    // Map all projects purely from Vercel API if available, supplemented with DB
     const allProjectsMap = new Map<string, any>();
 
-    // 1. First add local DB projects
-    projects.forEach((p) => {
-      const owner = users.find((u) => u.id === p.userId);
-      const projectDeployments = deployments.filter((d) => d.projectId === p.id);
-      const vercelMatch = vercelProjectsList.find(
-        (vp) => vp.name.toLowerCase() === p.slug.toLowerCase() || vp.id === p.vercelProjectId
-      );
-      allProjectsMap.set(p.slug.toLowerCase(), {
-        ...p,
-        ownerEmail: owner?.email || 'System User',
-        deploymentsCount: projectDeployments.length,
-        vercelId: vercelMatch?.id || p.vercelProjectId || null,
-        vercelFramework: vercelMatch?.framework || p.framework || 'static',
-        nodeVersion: vercelMatch?.nodeVersion || '20.x',
-        latestDeploymentUrl: vercelMatch?.targets?.production?.url
-          ? `https://${vercelMatch.targets.production.url}`
-          : `https://${p.subdomain}`,
-        isLiveOnVercel: Boolean(vercelMatch),
-        source: 'Synced (DB + Vercel API)',
-      });
-    });
+    if (vercelProjectsList.length > 0) {
+      // 1. Prioritize live projects from Vercel REST API
+      vercelProjectsList.forEach((vp) => {
+        const key = vp.name.toLowerCase();
+        const dbMatch = projects.find(
+          (p) => p.slug.toLowerCase() === key || p.vercelProjectId === vp.id || p.id === vp.id
+        );
+        const owner = dbMatch ? users.find((u) => u.id === dbMatch.userId) : null;
+        const projectDeployments = dbMatch ? deployments.filter((d) => d.projectId === dbMatch.id) : [];
 
-    // 2. Add all remote projects on Vercel that may not be in local DB
-    vercelProjectsList.forEach((vp) => {
-      const key = vp.name.toLowerCase();
-      if (!allProjectsMap.has(key)) {
+        const isPaused = Boolean(vp.paused) || dbMatch?.status === 'SUSPENDED';
+
         allProjectsMap.set(key, {
           id: vp.id,
-          userId: 'vercel_account',
+          dbId: dbMatch?.id || null,
+          vercelId: vp.id,
+          userId: dbMatch?.userId || 'vercel_account',
           name: vp.name,
           slug: vp.name,
-          framework: vp.framework || 'static',
-          nodeVersion: vp.nodeVersion || '20.x',
-          buildCommand: vp.buildCommand || '',
-          installCommand: vp.installCommand || '',
-          outputDirectory: vp.outputDirectory || './',
-          status: 'ACTIVE',
-          subdomain: `${vp.name}.${config.baseDomain}`,
-          latestDeploymentUrl: vp.targets?.production?.url ? `https://${vp.targets.production.url}` : `https://${vp.name}.${config.baseDomain}`,
+          framework: vp.framework || dbMatch?.framework || 'static',
+          nodeVersion: (vp as any).nodeVersion || '20.x',
+          buildCommand: (vp as any).buildCommand || dbMatch?.buildCommand || '',
+          installCommand: (vp as any).installCommand || dbMatch?.installCommand || '',
+          outputDirectory: (vp as any).outputDirectory || dbMatch?.outputDirectory || './',
+          status: isPaused ? 'SUSPENDED' : 'ACTIVE',
+          paused: isPaused,
+          subdomain: dbMatch?.subdomain || `${vp.name}.${config.baseDomain}`,
+          latestDeploymentUrl: dbMatch?.subdomain
+            ? `https://${dbMatch.subdomain}`
+            : vp.targets?.production?.url
+              ? `https://${vp.targets.production.url}`
+              : `https://${vp.name}.${config.baseDomain}`,
           createdAt: new Date(vp.createdAt).toISOString(),
           updatedAt: new Date(vp.updatedAt || vp.createdAt).toISOString(),
-          ownerEmail: 'Vercel API Account',
-          deploymentsCount: 1,
-          vercelId: vp.id,
+          ownerEmail: owner?.email || 'Vercel API Account',
+          deploymentsCount: Math.max(projectDeployments.length, 1),
           isLiveOnVercel: true,
           source: 'Live Vercel REST API',
         });
-      }
-    });
+      });
+
+      // 2. Include any local DB projects not present on Vercel
+      projects.forEach((p) => {
+        const key = p.slug.toLowerCase();
+        if (!allProjectsMap.has(key)) {
+          const owner = users.find((u) => u.id === p.userId);
+          const projectDeployments = deployments.filter((d) => d.projectId === p.id);
+          allProjectsMap.set(key, {
+            ...p,
+            ownerEmail: owner?.email || 'System User',
+            deploymentsCount: projectDeployments.length,
+            vercelId: p.vercelProjectId || null,
+            vercelFramework: p.framework || 'static',
+            nodeVersion: '20.x',
+            latestDeploymentUrl: `https://${p.subdomain}`,
+            isLiveOnVercel: false,
+            source: 'Local Project',
+          });
+        }
+      });
+    } else {
+      // If Vercel API returned no projects or unconfigured, list DB projects
+      projects.forEach((p) => {
+        const owner = users.find((u) => u.id === p.userId);
+        const projectDeployments = deployments.filter((d) => d.projectId === p.id);
+        allProjectsMap.set(p.slug.toLowerCase(), {
+          ...p,
+          ownerEmail: owner?.email || 'System User',
+          deploymentsCount: projectDeployments.length,
+          vercelId: p.vercelProjectId || null,
+          vercelFramework: p.framework || 'static',
+          nodeVersion: '20.x',
+          latestDeploymentUrl: `https://${p.subdomain}`,
+          isLiveOnVercel: false,
+          source: 'Local Project',
+        });
+      });
+    }
 
     const enrichedProjects = Array.from(allProjectsMap.values());
 

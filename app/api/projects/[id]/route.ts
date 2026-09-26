@@ -107,10 +107,36 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
+  const config = getVercelConfig();
+  if (!config.isConfigured) {
+    return NextResponse.json(
+      { error: 'Vercel API Token is not configured. Project deletion is disabled.' },
+      { status: 400 }
+    );
+  }
+
   const { id } = await params;
-  const project = db.getProjectById(id);
+  let project = db.getProjectById(id) || db.getProjectBySlug(id);
 
   if (!project) {
+    // If not found in local DB, but user is admin, attempt Vercel deletion and DB cleanup
+    if (user.role === 'admin') {
+      if (config.isConfigured) {
+        try {
+          await deleteVercelProject(id);
+        } catch (err) {
+          console.warn('Vercel project cleanup error (non-fatal):', err);
+        }
+      }
+      db.deleteProject(id);
+      db.addAuditLog({
+        userId: user.id,
+        userEmail: user.email,
+        action: 'PROJECT_DELETE',
+        metadata: { projectId: id },
+      });
+      return NextResponse.json({ success: true, message: 'Project successfully deleted' });
+    }
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 
@@ -128,16 +154,21 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   }
 
   // If Vercel project exists and Vercel is configured, attempt clean deletion on Vercel
-  const config = getVercelConfig();
-  if (config.isConfigured && (project.vercelProjectId || project.slug)) {
-    try {
-      await deleteVercelProject(project.vercelProjectId || project.slug);
-    } catch (err) {
-      console.warn('Vercel project cleanup error (non-fatal):', err);
+  if (config.isConfigured) {
+    const targets = Array.from(
+      new Set([project.vercelProjectId, project.slug, project.name, id].filter(Boolean))
+    );
+    for (const target of targets) {
+      try {
+        await deleteVercelProject(target as string);
+      } catch (err) {
+        console.warn(`Vercel project cleanup notice for ${target} (non-fatal):`, err);
+      }
     }
   }
 
   db.deleteProject(project.id);
+  db.deleteProject(id);
 
   db.addAuditLog({
     userId: user.id,

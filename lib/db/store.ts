@@ -30,7 +30,7 @@ const defaultSystemConfig: SystemConfig = {
   baseDomain: process.env.BASE_DOMAIN || 'cmnty.biz.id',
   availableDomains: ['cmnty.biz.id'],
   allowPublicRegistration: true,
-  maxProjectsPerUser: 10,
+  maxProjectsPerUser: 3,
   maxDeploymentsPerDay: 50,
 };
 
@@ -186,11 +186,21 @@ export const db = {
   },
 
   getProjectById(id: string): Project | undefined {
-    return getDb().projects.find((p) => p.id === id);
+    const data = getDb();
+    const cleanId = (id || '').toLowerCase().trim();
+    return data.projects.find(
+      (p) =>
+        p.id === id ||
+        p.slug?.toLowerCase() === cleanId ||
+        p.vercelProjectId === id ||
+        p.subdomain?.toLowerCase() === cleanId
+    );
   },
 
   getProjectBySlug(slug: string): Project | undefined {
-    return getDb().projects.find((p) => p.slug.toLowerCase() === slug.toLowerCase());
+    const data = getDb();
+    const cleanSlug = (slug || '').toLowerCase().trim();
+    return data.projects.find((p) => p.slug.toLowerCase() === cleanSlug);
   },
 
   createProject(project: Project): Project {
@@ -202,7 +212,14 @@ export const db = {
 
   updateProject(id: string, updates: Partial<Project>): Project | null {
     const data = getDb();
-    const idx = data.projects.findIndex((p) => p.id === id);
+    const cleanId = (id || '').toLowerCase().trim();
+    const idx = data.projects.findIndex(
+      (p) =>
+        p.id === id ||
+        p.slug?.toLowerCase() === cleanId ||
+        p.vercelProjectId === id ||
+        p.subdomain?.toLowerCase() === cleanId
+    );
     if (idx === -1) return null;
     data.projects[idx] = { ...data.projects[idx], ...updates, updatedAt: new Date().toISOString() };
     saveDb(data);
@@ -211,14 +228,30 @@ export const db = {
 
   deleteProject(id: string): boolean {
     const data = getDb();
-    const initLen = data.projects.length;
-    data.projects = data.projects.filter((p) => p.id !== id);
+    const cleanId = (id || '').toLowerCase().trim();
+    const target = data.projects.find(
+      (p) =>
+        p.id === id ||
+        p.slug?.toLowerCase() === cleanId ||
+        p.vercelProjectId === id ||
+        p.subdomain?.toLowerCase() === cleanId
+    );
+    const targetId = target ? target.id : id;
+
+    data.projects = data.projects.filter(
+      (p) =>
+        p.id !== targetId &&
+        p.id !== id &&
+        p.slug?.toLowerCase() !== cleanId &&
+        p.vercelProjectId !== id
+    );
+
     // Cascade delete associated records
-    data.deployments = data.deployments.filter((d) => d.projectId !== id);
-    data.domains = data.domains.filter((d) => d.projectId !== id);
-    data.environmentVariables = data.environmentVariables.filter((e) => e.projectId !== id);
+    data.deployments = data.deployments.filter((d) => d.projectId !== targetId && d.projectId !== id);
+    data.domains = data.domains.filter((d) => d.projectId !== targetId && d.projectId !== id);
+    data.environmentVariables = data.environmentVariables.filter((e) => e.projectId !== targetId && e.projectId !== id);
     saveDb(data);
-    return data.projects.length < initLen;
+    return true;
   },
 
   // Deployments

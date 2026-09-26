@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
@@ -9,7 +9,8 @@ import SslStatusBadge from '@/components/SslStatusBadge';
 import { authFetch } from '@/lib/auth/client';
 import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
-import { parseEnvText } from '@/lib/env-detector';
+import { useToast } from '@/components/Providers';
+import { parseEnvString, detectRecommendedEnvForFramework } from '@/lib/env-detector';
 import {
   ExternalLink,
   RefreshCw,
@@ -26,15 +27,15 @@ import {
   AlertCircle,
   Clock,
   Lock,
-  FolderUp,
+  Sparkles,
   FileText,
-  Zap,
 } from 'lucide-react';
 
 export default function ProjectDetailPage() {
   const params = useParams();
   const router = useRouter();
   const projectId = params?.id as string;
+  const { toast, confirmModal } = useToast();
 
   const [project, setProject] = useState<any>(null);
   const [deployments, setDeployments] = useState<any[]>([]);
@@ -42,6 +43,7 @@ export default function ProjectDetailPage() {
   const [envVars, setEnvVars] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'overview' | 'deployments' | 'domains' | 'env' | 'settings'>('overview');
+  const [detectingEnv, setDetectingEnv] = useState(false);
 
   // Logs modal
   const [selectedDeployment, setSelectedDeployment] = useState<any>(null);
@@ -81,7 +83,6 @@ export default function ProjectDetailPage() {
   const [showBulkEnvModal, setShowBulkEnvModal] = useState(false);
   const [bulkEnvText, setBulkEnvText] = useState('');
   const [addingEnv, setAddingEnv] = useState(false);
-  const envFileInputRef = useRef<HTMLInputElement>(null);
 
   // Settings form
   const [nameInput, setNameInput] = useState('');
@@ -166,13 +167,14 @@ export default function ProjectDetailPage() {
       });
       const data = await res.json();
       if (res.ok) {
+        toast.success('Deployment triggered successfully!');
         refreshProject();
         setActiveTab('deployments');
       } else {
-        alert(data.error || 'Failed to trigger redeploy');
+        toast.error(data.error || 'Failed to trigger redeploy');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'Error triggering redeploy');
     } finally {
       setRedeploying(false);
     }
@@ -191,11 +193,13 @@ export default function ProjectDetailPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Failed to add domain');
       setNewDomain('');
+      toast.success(`Domain "${newDomain}" added successfully!`);
       refreshProject();
     } catch (err: any) {
       setDomainError(err.message);
+      toast.error(err.message || 'Failed to add domain');
     } finally {
-      setDomainError('');
+      setAddingDomain(false);
     }
   };
 
@@ -207,23 +211,40 @@ export default function ProjectDetailPage() {
         body: JSON.stringify({ domain: domainName }),
       });
       const data = await res.json();
-      alert(data.message || 'Domain check completed');
+      if (res.ok) {
+        toast.success(data.message || `Domain "${domainName}" verification completed`);
+      } else {
+        toast.error(data.error || 'Domain verification check failed');
+      }
       refreshProject();
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'Domain verification check failed');
     }
   };
 
-  const handleRemoveDomain = async (domainName: string) => {
-    if (!confirm(`Are you sure you want to remove domain ${domainName}?`)) return;
-    try {
-      await authFetch(`/api/projects/${projectId}/domains?domain=${encodeURIComponent(domainName)}`, {
-        method: 'DELETE',
-      });
-      refreshProject();
-    } catch (err) {
-      console.error(err);
-    }
+  const handleRemoveDomain = (domainName: string) => {
+    confirmModal({
+      title: 'Remove Custom Domain',
+      message: `Are you sure you want to remove "${domainName}" from this project?`,
+      confirmText: 'Remove Domain',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/projects/${projectId}/domains?domain=${encodeURIComponent(domainName)}`, {
+            method: 'DELETE',
+          });
+          if (res.ok) {
+            toast.success(`Domain "${domainName}" removed`);
+            refreshProject();
+          } else {
+            const data = await res.json();
+            toast.error(data.error || 'Failed to remove domain');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to remove domain');
+        }
+      },
+    });
   };
 
   const handleAddEnv = async (e: React.FormEvent) => {
@@ -240,72 +261,114 @@ export default function ProjectDetailPage() {
         }),
       });
       if (res.ok) {
+        toast.success(`Environment variable ${newEnvKey} saved!`);
         setNewEnvKey('');
         setNewEnvValue('');
         refreshProject();
+      } else {
+        const d = await res.json();
+        toast.error(d.error || 'Failed to add environment variable');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to add environment variable');
     } finally {
       setAddingEnv(false);
     }
   };
 
-  const handleEnvFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = async (event) => {
-        const content = event.target?.result as string;
-        if (content) {
-          const parsed = parseEnvText(content, file.name);
-          for (const item of parsed) {
-            await authFetch(`/api/projects/${projectId}/env`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                key: item.key,
-                value: item.value,
-                target: item.target,
-              }),
-            });
-          }
-          refreshProject();
-        }
-      };
-      reader.readAsText(file);
+  const handleAutoDetectEnv = async () => {
+    setDetectingEnv(true);
+    try {
+      const recommended = detectRecommendedEnvForFramework(
+        project?.framework || 'static',
+        project?.name,
+        project?.subdomain
+      );
+
+      const existingKeys = new Set(envVars.map((e) => e.key));
+      const missing = recommended.filter((r) => !existingKeys.has(r.key));
+
+      if (missing.length === 0) {
+        toast.info('All recommended environment variables for this framework are already configured!');
+        return;
+      }
+
+      let added = 0;
+      for (const item of missing) {
+        const res = await authFetch(`/api/projects/${projectId}/env`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: item.key,
+            value: item.value,
+            target: item.target || ['production', 'preview', 'development'],
+          }),
+        });
+        if (res.ok) added++;
+      }
+
+      toast.success(`Auto-detected & added ${added} recommended variable(s) for ${(project?.framework || 'static').toUpperCase()}`);
+      refreshProject();
+    } catch (err: any) {
+      toast.error(err.message || 'Failed to auto-detect environment variables');
+    } finally {
+      setDetectingEnv(false);
     }
   };
 
   const handleBulkEnvImport = async () => {
     if (!bulkEnvText.trim()) return;
-    const parsed = parseEnvText(bulkEnvText, 'Pasted .env');
-    for (const item of parsed) {
-      await authFetch(`/api/projects/${projectId}/env`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          key: item.key,
-          value: item.value,
-          target: item.target,
-        }),
-      });
+    const parsed = parseEnvString(bulkEnvText);
+    if (parsed.length === 0) {
+      toast.warning('No valid KEY=VALUE pairs found in pasted text');
+      return;
     }
+
+    let addedCount = 0;
+    for (const item of parsed) {
+      if (item.key) {
+        const res = await authFetch(`/api/projects/${projectId}/env`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            key: item.key,
+            value: item.value,
+            target: item.target || ['production', 'preview', 'development'],
+          }),
+        });
+        if (res.ok) addedCount++;
+      }
+    }
+
+    toast.success(`Imported ${addedCount} environment variable(s)!`);
     setBulkEnvText('');
     setShowBulkEnvModal(false);
     refreshProject();
   };
 
-  const handleDeleteEnv = async (key: string) => {
-    if (!confirm(`Delete environment variable ${key}?`)) return;
-    try {
-      await authFetch(`/api/projects/${projectId}/env?key=${encodeURIComponent(key)}`, {
-        method: 'DELETE',
-      });
-      refreshProject();
-    } catch (err) {
-      console.error(err);
-    }
+  const handleDeleteEnv = (key: string) => {
+    confirmModal({
+      title: 'Delete Environment Variable',
+      message: `Are you sure you want to delete "${key}"? This will take effect on next deployment.`,
+      confirmText: 'Delete Variable',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/projects/${projectId}/env?key=${encodeURIComponent(key)}`, {
+            method: 'DELETE',
+          });
+          if (res.ok) {
+            toast.success(`Variable "${key}" removed`);
+            refreshProject();
+          } else {
+            const data = await res.json();
+            toast.error(data.error || 'Failed to remove variable');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to remove variable');
+        }
+      },
+    });
   };
 
   const handleSaveSettings = async (e: React.FormEvent) => {
@@ -325,36 +388,53 @@ export default function ProjectDetailPage() {
         }),
       });
       if (res.ok) {
+        toast.success('Project settings saved successfully!');
         setSettingsMessage('Project settings saved successfully');
         refreshProject();
+      } else {
+        const data = await res.json();
+        toast.error(data.error || 'Failed to save settings');
       }
-    } catch (err) {
-      console.error(err);
+    } catch (err: any) {
+      toast.error(err.message || 'Error saving settings');
     }
   };
 
   const handleDeleteProject = async () => {
     if (deleteConfirmInput !== project.name && deleteConfirmInput !== project.slug) {
-      alert(`Type "${project.name}" or "${project.slug}" to confirm deletion`);
+      toast.error(`Type "${project.name}" or "${project.slug}" to confirm deletion`);
       return;
     }
-    try {
-      const res = await authFetch(`/api/projects/${projectId}`, {
-        method: 'DELETE',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ confirmName: deleteConfirmInput }),
-      });
-      if (res.ok) {
-        router.push('/dashboard');
-      }
-    } catch (err) {
-      console.error(err);
-    }
+    confirmModal({
+      title: 'Permanently Delete Project',
+      message: `Are you sure you want to permanently delete "${project.name}"? This action cannot be undone.`,
+      confirmText: 'Permanently Delete',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/projects/${projectId}`, {
+            method: 'DELETE',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ confirmName: deleteConfirmInput }),
+          });
+          if (res.ok) {
+            toast.success(`Project "${project.name}" deleted`);
+            router.push('/dashboard');
+          } else {
+            const d = await res.json();
+            toast.error(d.error || 'Failed to delete project');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Failed to delete project');
+        }
+      },
+    });
   };
 
   const handleCopyUrl = (url: string) => {
     navigator.clipboard.writeText(url);
     setCopiedUrl(true);
+    toast.success('URL copied to clipboard!');
     setTimeout(() => setCopiedUrl(false), 2000);
   };
 
@@ -405,22 +485,6 @@ export default function ProjectDetailPage() {
 
           <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap shrink-0">
             <button
-              onClick={() => handleCopyUrl(prodUrl)}
-              className="px-3 py-1.5 sm:py-2 border border-neutral-200 rounded-lg text-xs font-medium text-neutral-700 hover:bg-neutral-50 transition flex items-center gap-1.5"
-            >
-              {copiedUrl ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedUrl ? 'Copied' : 'Copy URL'}</span>
-            </button>
-            <a
-              href={prodUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="px-3.5 py-1.5 sm:py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition flex items-center gap-1.5 shadow-2xs"
-            >
-              <span>Visit Site</span>
-              <ExternalLink className="w-3.5 h-3.5" />
-            </a>
-            <button
               onClick={handleRedeploy}
               disabled={redeploying}
               className="px-3.5 py-1.5 sm:py-2 border border-neutral-200 text-neutral-900 rounded-lg text-xs font-semibold hover:bg-neutral-50 transition flex items-center gap-1.5"
@@ -436,7 +500,6 @@ export default function ProjectDetailPage() {
           {[
             { id: 'overview', label: 'Overview', icon: Layers },
             { id: 'deployments', label: `Deployments (${deployments.length})`, icon: Clock },
-            { id: 'domains', label: `Domains (${domains.length})`, icon: Globe },
             { id: 'env', label: `Environment (${envVars.length})`, icon: Key },
             { id: 'settings', label: 'Settings', icon: SettingsIcon },
           ].map((tab) => {
@@ -644,109 +707,25 @@ export default function ProjectDetailPage() {
           </div>
         )}
 
-        {/* TAB 3: DOMAINS */}
-        {activeTab === 'domains' && (
-          <div className="space-y-6">
-            <div className="bg-white border border-neutral-200 rounded-2xl shadow-xs overflow-hidden">
-              <div className="p-5 border-b border-neutral-100 flex items-center justify-between">
-                <h3 className="font-bold text-sm text-neutral-950">Assigned Domain & Subdomains</h3>
-                <span className="text-xs font-mono text-neutral-500">{domains.length} active</span>
-              </div>
-
-              <div className="divide-y divide-neutral-100">
-                {domains.map((dom) => (
-                  <div key={dom.id} className="p-5 sm:p-6 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-sm font-bold text-neutral-950">{dom.domain}</span>
-                          {dom.isSubdomain && (
-                            <span className="text-[10px] bg-neutral-100 text-neutral-600 px-1.5 py-0.5 rounded font-mono">
-                              Subdomain Default
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <SslStatusBadge status={dom.sslStatus} />
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-start sm:self-auto">
-                        <button
-                          type="button"
-                          onClick={() => handleVerifyDomain(dom.domain)}
-                          className="px-3 py-1.5 border border-neutral-200 rounded-lg text-xs font-semibold hover:bg-neutral-50 transition flex items-center gap-1"
-                        >
-                          <RefreshCw className="w-3 h-3 text-neutral-500" />
-                          <span>Verify DNS & SSL</span>
-                        </button>
-
-                        <a
-                          href={`https://${dom.domain}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="p-2 border border-neutral-200 rounded-lg text-neutral-600 hover:text-neutral-950 hover:bg-neutral-50 transition"
-                          title="Visit domain"
-                        >
-                          <ExternalLink className="w-3.5 h-3.5" />
-                        </a>
-
-                        {!dom.isSubdomain && (
-                          <button
-                            type="button"
-                            onClick={() => handleRemoveDomain(dom.domain)}
-                            className="p-2 border border-neutral-200 rounded-lg text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition"
-                            title="Remove domain"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
         {/* TAB 4: ENVIRONMENT VARIABLES */}
         {activeTab === 'env' && (
           <div className="space-y-6">
-            <input
-              type="file"
-              ref={envFileInputRef}
-              accept=".env,.env.*,.txt,.example"
-              onChange={handleEnvFileUpload}
-              className="hidden"
-            />
-
             <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-xs space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                 <div>
                   <h3 className="font-bold text-sm text-neutral-950">Add Environment Variable</h3>
                   <p className="text-xs text-neutral-500">
                     Variables are encrypted and synced to build and runtime pipelines.
                   </p>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <button
-                    type="button"
-                    onClick={() => envFileInputRef.current?.click()}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer"
-                    title="Upload a .env or .env.example file"
-                  >
-                    <FolderUp className="w-3.5 h-3.5 text-neutral-600" />
-                    <span>Upload .env</span>
-                  </button>
-
+                <div className="flex items-center gap-3 shrink-0 flex-wrap">
                   <button
                     type="button"
                     onClick={() => setShowBulkEnvModal(true)}
-                    className="inline-flex items-center gap-1.5 px-3 py-1.5 border border-neutral-200 hover:bg-neutral-50 text-neutral-700 rounded-lg text-xs font-semibold transition active:scale-95 cursor-pointer"
+                    className="inline-flex items-center gap-1 text-xs font-semibold text-neutral-700 hover:text-neutral-950 hover:underline"
                   >
-                    <FileText className="w-3.5 h-3.5 text-neutral-500" />
-                    <span>Paste .env</span>
+                    <FileText className="w-3.5 h-3.5" />
+                    <span>Paste .env / Bulk Import</span>
                   </button>
                 </div>
               </div>
@@ -1059,23 +1038,12 @@ export default function ProjectDetailPage() {
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleInspectDeployment(selectedDeployment)}
-                    disabled={loadingLogs}
-                    className="p-1.5 bg-neutral-900 border border-neutral-800 rounded-lg text-neutral-300 hover:text-white hover:bg-neutral-800 transition text-xs flex items-center gap-1.5"
-                    title="Refresh build logs"
-                  >
-                    <RefreshCw className={`w-3.5 h-3.5 ${loadingLogs ? 'animate-spin text-emerald-400' : ''}`} />
-                    <span className="hidden sm:inline">Refresh Logs</span>
-                  </button>
-                  <button
-                    onClick={() => setSelectedDeployment(null)}
-                    className="text-neutral-400 hover:text-white text-xs font-semibold px-2.5 py-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:bg-neutral-800 transition"
-                  >
-                    ✕ Close
-                  </button>
-                </div>
+                <button
+                  onClick={() => setSelectedDeployment(null)}
+                  className="text-neutral-400 hover:text-white text-sm font-bold w-8 h-8 rounded-lg hover:bg-neutral-800 transition flex items-center justify-center"
+                >
+                  ✕
+                </button>
               </div>
 
               {/* Status Header */}

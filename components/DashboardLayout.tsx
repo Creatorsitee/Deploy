@@ -120,7 +120,6 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
   const navItems = [
     { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
     { label: 'Projects', href: '/dashboard/projects', icon: Server },
-    { label: 'Domains', href: '/dashboard/domains', icon: Globe },
     { label: 'Usage', href: '/dashboard/usage', icon: Gauge },
     { label: 'Home', href: '/', icon: Home, external: false },
   ];
