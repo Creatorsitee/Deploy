@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { safeJson } from '@/lib/fetch-utils';
 import {
   ArrowRight,
   Globe,
@@ -19,8 +20,8 @@ export default function HomePage() {
       try {
         const res = await fetch('/api/config');
         if (res.ok) {
-          const data = await res.json();
-          if (data.baseDomain) {
+          const data = await safeJson(res);
+          if (data && data.baseDomain) {
             setBaseDomain(data.baseDomain);
           }
         }
@@ -42,7 +43,7 @@ export default function HomePage() {
             </h1>
 
             <p className="text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed">
-              Simple, high-performance web hosting powered by CMNTY Edge API. Deploy static sites, modern web applications, and templates with automated subdomains and SSL certificates.
+              Simple, high-performance web hosting powered by CMNTY Edge API. Deploy static sites, single HTML files, and modern web applications with automated subdomains and SSL certificates.
             </p>
 
             {/* Direct CTAs */}
@@ -86,11 +87,11 @@ export default function HomePage() {
                   </div>
                   <h3 className="text-base font-bold text-neutral-950">Instant Deployment</h3>
                   <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed">
-                    Upload a ZIP archive or pick a pre-built template. Your site is deployed and served on global edge nodes in seconds.
+                    Upload a ZIP archive or a single HTML file. Your site is deployed and served on global edge nodes in seconds.
                   </p>
                 </div>
                 <div className="mt-6 pt-4 border-t border-neutral-100 text-[11px] font-mono text-neutral-400">
-                  ZIP upload · Pre-built templates
+                  ZIP upload · Single HTML support
                 </div>
               </div>
 
@@ -146,7 +147,7 @@ export default function HomePage() {
                 <span className="font-mono text-xs font-semibold text-neutral-400">01</span>
                 <h3 className="text-base font-semibold text-neutral-950">1. Create & Upload</h3>
                 <p className="text-xs sm:text-sm text-neutral-600 leading-relaxed">
-                  Upload your pre-built static archive (HTML, CSS, JS) or select a popular starter template.
+                  Upload your pre-built static archive (HTML, CSS, JS) or simply upload a single HTML file.
                 </p>
               </div>
 

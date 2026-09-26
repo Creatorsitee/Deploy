@@ -809,6 +809,24 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
+            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-2 animate-in fade-in duration-200">
+              <div className="flex items-center gap-2 font-bold text-blue-950">
+                <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
+                <span>PENTING: Petunjuk Deployment di Vercel (Stateless/Serverless)</span>
+              </div>
+              <p className="leading-relaxed">
+                Karena platform ini dideploy ke <strong>Vercel</strong> (yang menggunakan sistem file <em>read-only</em> dan wadah serverless yang bersifat dinamis/ephemeral), penyimpanan ke database file lokal <code>cmnty_db.json</code> tidak dapat tersinkronisasi secara permanen di antara semua wadah Vercel Anda.
+              </p>
+              <p className="leading-relaxed font-semibold">
+                Untuk hasil yang 100% permanen dan lancar, harap tambahkan variabel lingkungan (Environment Variables) berikut langsung di dashboard proyek Vercel Anda, lalu lakukan <strong>Redeploy</strong>:
+              </p>
+              <ul className="list-disc pl-5 space-y-1 font-mono text-[11px] text-blue-950 bg-white/60 p-2.5 rounded-lg border border-blue-100">
+                <li><strong>VERCEL_TOKEN</strong> : [Token API Vercel Anda]</li>
+                <li><strong>VERCEL_TEAM_ID</strong> : [ID Tim Vercel Anda] (Opsional)</li>
+                <li><strong>BASE_DOMAIN</strong> : [Domain Utama Anda, misal: cmnty.biz.id]</li>
+              </ul>
+            </div>
+
             {diagnostics?.error && (
               <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
                 <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />

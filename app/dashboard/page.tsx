@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DeploymentStatusBadge from '@/components/DeploymentStatusBadge';
 import { authFetch } from '@/lib/auth/client';
 import { useToast } from '@/components/Providers';
+import { safeJson } from '@/lib/fetch-utils';
 import {
   Server,
   Rocket,
@@ -29,9 +30,9 @@ export default function DashboardOverviewPage() {
 
   const fetchProjects = () => {
     authFetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (d.projects) setProjects(d.projects);
+        if (d && d.projects) setProjects(d.projects);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -40,9 +41,9 @@ export default function DashboardOverviewPage() {
   useEffect(() => {
     let isMounted = true;
     fetch('/api/config')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (isMounted) {
+        if (isMounted && d) {
           if (d.baseDomain) setBaseDomain(d.baseDomain);
           if (d.isVercelConfigured !== undefined) setIsVercelConfigured(d.isVercelConfigured);
         }
@@ -50,9 +51,9 @@ export default function DashboardOverviewPage() {
       .catch(() => {});
 
     authFetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (isMounted && d.projects) setProjects(d.projects);
+        if (isMounted && d && d.projects) setProjects(d.projects);
       })
       .catch((err) => console.error(err))
       .finally(() => {
@@ -180,7 +181,7 @@ export default function DashboardOverviewPage() {
               <div className="space-y-1">
                 <h3 className="text-sm font-semibold text-neutral-950">No projects deployed yet</h3>
                 <p className="text-xs text-neutral-500 max-w-sm mx-auto">
-                  Deploy your first web application with a ZIP upload or starter template.
+                  Deploy your first web application with a ZIP upload or Git repository.
                 </p>
               </div>
               <Link

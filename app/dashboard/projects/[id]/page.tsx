@@ -7,9 +7,8 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DeploymentStatusBadge from '@/components/DeploymentStatusBadge';
 import SslStatusBadge from '@/components/SslStatusBadge';
 import { authFetch } from '@/lib/auth/client';
-import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
-import FrameworkIcon from '@/components/FrameworkIcon';
 import { useToast } from '@/components/Providers';
+import { safeJson } from '@/lib/fetch-utils';
 import { parseEnvString, detectRecommendedEnvForFramework } from '@/lib/env-detector';
 import {
   ExternalLink,
@@ -55,8 +54,8 @@ export default function ProjectDetailPage() {
     try {
       const res = await authFetch(`/api/deployments/${dep.id}`);
       if (res.ok) {
-        const data = await res.json();
-        if (data.deployment) {
+        const data = await safeJson(res);
+        if (data && data.deployment) {
           setSelectedDeployment(data.deployment);
         }
       }
@@ -85,14 +84,7 @@ export default function ProjectDetailPage() {
   const [addingEnv, setAddingEnv] = useState(false);
 
   // Settings form
-  const [nameInput, setNameInput] = useState('');
-  const [frameworkInput, setFrameworkInput] = useState('static');
-  const [nodeVersionInput, setNodeVersionInput] = useState('20.x');
-  const [buildCmdInput, setBuildCmdInput] = useState('');
-  const [installCmdInput, setInstallCmdInput] = useState('');
-  const [outputDirInput, setOutputDirInput] = useState('');
   const [deleteConfirmInput, setDeleteConfirmInput] = useState('');
-  const [settingsMessage, setSettingsMessage] = useState('');
 
   // Action states
   const [redeploying, setRedeploying] = useState(false);
@@ -105,18 +97,13 @@ export default function ProjectDetailPage() {
         if (res.status === 404) router.push('/dashboard');
         return;
       }
-      const data = await res.json();
-      setProject(data.project);
-      setDeployments(data.deployments || []);
-      setDomains(data.domains || []);
-      setEnvVars(data.environmentVariables || []);
-
-      setNameInput(data.project.name);
-      setFrameworkInput(data.project.framework || 'static');
-      setNodeVersionInput(data.project.nodeVersion || '20.x');
-      setBuildCmdInput(data.project.buildCommand || '');
-      setInstallCmdInput(data.project.installCommand || '');
-      setOutputDirInput(data.project.outputDirectory || './');
+      const data = await safeJson(res);
+      if (data) {
+        setProject(data.project);
+        setDeployments(data.deployments || []);
+        setDomains(data.domains || []);
+        setEnvVars(data.environmentVariables || []);
+      }
     } catch (err) {
       console.error(err);
     } finally {
@@ -142,10 +129,6 @@ export default function ProjectDetailPage() {
         setDeployments(data.deployments || []);
         setDomains(data.domains || []);
         setEnvVars(data.environmentVariables || []);
-        setNameInput(data.project.name);
-        setBuildCmdInput(data.project.buildCommand || '');
-        setInstallCmdInput(data.project.installCommand || '');
-        setOutputDirInput(data.project.outputDirectory || './');
       })
       .catch((err) => console.error(err))
       .finally(() => {
@@ -369,35 +352,6 @@ export default function ProjectDetailPage() {
         }
       },
     });
-  };
-
-  const handleSaveSettings = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSettingsMessage('');
-    try {
-      const res = await authFetch(`/api/projects/${projectId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: nameInput,
-          framework: frameworkInput,
-          nodeVersion: nodeVersionInput,
-          buildCommand: buildCmdInput,
-          installCommand: installCmdInput,
-          outputDirectory: outputDirInput,
-        }),
-      });
-      if (res.ok) {
-        toast.success('Project settings saved successfully!');
-        setSettingsMessage('Project settings saved successfully');
-        refreshProject();
-      } else {
-        const data = await res.json();
-        toast.error(data.error || 'Failed to save settings');
-      }
-    } catch (err: any) {
-      toast.error(err.message || 'Error saving settings');
-    }
   };
 
   const handleDeleteProject = async () => {
@@ -871,121 +825,6 @@ export default function ProjectDetailPage() {
         {/* TAB 5: SETTINGS */}
         {activeTab === 'settings' && (
           <div className="space-y-6">
-            <div className="bg-white border border-neutral-200 rounded-2xl p-6 shadow-xs space-y-4">
-              <h3 className="font-bold text-sm text-neutral-950">Project Settings</h3>
-
-              {settingsMessage && (
-                <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 font-medium">
-                  {settingsMessage}
-                </div>
-              )}
-
-              <form onSubmit={handleSaveSettings} className="space-y-4">
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Project Display Name
-                  </label>
-                  <input
-                    type="text"
-                    value={nameInput}
-                    onChange={(e) => setNameInput(e.target.value)}
-                    className="w-full max-w-md px-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-medium focus:outline-none focus:border-neutral-950"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Framework Preset
-                  </label>
-                  <div className="flex items-center gap-2 px-3 py-1 bg-neutral-50 border border-neutral-200 rounded-lg max-w-md focus-within:border-neutral-950 transition">
-                    <div className="p-1 bg-white border border-neutral-200 rounded shrink-0 shadow-2xs">
-                      <FrameworkIcon frameworkKey={frameworkInput} className="w-5 h-5" />
-                    </div>
-                    <select
-                      value={frameworkInput}
-                      onChange={(e) => {
-                        const fw = e.target.value;
-                        setFrameworkInput(fw);
-                        const preset = VERCEL_FRAMEWORKS[fw];
-                        if (preset) {
-                          setBuildCmdInput(preset.defaultBuild);
-                          setOutputDirInput(preset.defaultOutput);
-                          setInstallCmdInput(preset.defaultInstall);
-                        }
-                      }}
-                      className="w-full py-1.5 bg-transparent text-xs font-bold text-neutral-900 focus:outline-none cursor-pointer"
-                    >
-                      {Object.entries(VERCEL_FRAMEWORKS).map(([key, info]) => (
-                        <option key={key} value={key}>
-                          {info.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Node.js Version
-                  </label>
-                  <select
-                    value={nodeVersionInput}
-                    onChange={(e) => setNodeVersionInput(e.target.value)}
-                    className="w-full max-w-md px-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950 cursor-pointer"
-                  >
-                    <option value="20.x">20.x (Recommended Default)</option>
-                    <option value="18.x">18.x (LTS)</option>
-                    <option value="22.x">22.x (Latest)</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Build Command
-                  </label>
-                  <input
-                    type="text"
-                    value={buildCmdInput}
-                    onChange={(e) => setBuildCmdInput(e.target.value)}
-                    placeholder="npm run build"
-                    className="w-full max-w-md px-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Install Command
-                  </label>
-                  <input
-                    type="text"
-                    value={installCmdInput}
-                    onChange={(e) => setInstallCmdInput(e.target.value)}
-                    placeholder="npm install"
-                    className="w-full max-w-md px-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                    Output Directory
-                  </label>
-                  <input
-                    type="text"
-                    value={outputDirInput}
-                    onChange={(e) => setOutputDirInput(e.target.value)}
-                    placeholder="./ or dist"
-                    className="w-full max-w-md px-3.5 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                  />
-                </div>
-
-                <button
-                  type="submit"
-                  className="px-5 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition"
-                >
-                  Save Settings
-                </button>
-              </form>
-            </div>
-
             {/* Danger Zone: Delete Project */}
             <div className="bg-white border border-rose-200 rounded-2xl p-6 shadow-xs space-y-4">
               <h3 className="font-bold text-sm text-rose-700">Danger Zone: Delete Project</h3>

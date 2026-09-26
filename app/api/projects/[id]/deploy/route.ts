@@ -2,7 +2,6 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getCurrentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/store';
 import { extractZipSafely, detectFramework, executeDeployment } from '@/lib/deployment-service';
-import { STARTER_TEMPLATES } from '@/lib/templates';
 import { getVercelConfig } from '@/lib/vercel/client';
 
 export const config = {
@@ -53,65 +52,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (contentType.includes('multipart/form-data')) {
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
-      commitMsg = (formData.get('commitMessage') as string) || 'Upload ZIP source';
+      const isSingleHtml = formData.get('isSingleHtml') === 'true';
+      commitMsg = (formData.get('commitMessage') as string) || 'Upload source';
 
       if (!file) {
-        return NextResponse.json({ error: 'No ZIP file provided in upload' }, { status: 400 });
+        return NextResponse.json({ error: 'No file provided in upload' }, { status: 400 });
       }
 
-      if (!file.name.endsWith('.zip') && file.type !== 'application/zip') {
-        return NextResponse.json({ error: 'Only .zip archives are supported' }, { status: 400 });
-      }
-
-      const arrayBuffer = await file.arrayBuffer();
-      const extracted = await extractZipSafely(arrayBuffer);
-
-      filesToDeploy = extracted.map((f) => ({
-        file: f.file,
-        data: f.data,
-        encoding: f.encoding,
-      }));
-
-      sourceType = 'zip';
-      sourceName = file.name;
-
-      // Update framework detection if default
-      const detected = detectFramework(filesToDeploy);
-      if (detected.framework && detected.framework !== project.framework) {
+      if (isSingleHtml) {
+        if (!file.name.endsWith('.html')) {
+          return NextResponse.json({ error: 'Expected an .html file' }, { status: 400 });
+        }
+        const text = await file.text();
+        filesToDeploy = [{
+          file: 'index.html',
+          data: text,
+          encoding: 'utf-8',
+        }];
+        sourceType = 'zip'; // Treating it as a set of files
+        sourceName = file.name;
+        
+        // Ensure static framework for single HTML
         db.updateProject(project.id, {
-          framework: detected.framework,
-          buildCommand: detected.buildCommand || project.buildCommand,
-          installCommand: detected.installCommand || project.installCommand,
-          outputDirectory: detected.outputDirectory || project.outputDirectory,
+          framework: 'static',
+          buildCommand: '',
+          installCommand: '',
+          outputDirectory: './',
         });
+      } else {
+        if (!file.name.endsWith('.zip') && file.type !== 'application/zip') {
+          return NextResponse.json({ error: 'Only .zip archives are supported' }, { status: 400 });
+        }
+
+        const arrayBuffer = await file.arrayBuffer();
+        const extracted = await extractZipSafely(arrayBuffer);
+
+        filesToDeploy = extracted.map((f) => ({
+          file: f.file,
+          data: f.data,
+          encoding: f.encoding,
+        }));
+
+        sourceType = 'zip';
+        sourceName = file.name;
+
+        // Update framework detection if default
+        const detected = detectFramework(filesToDeploy);
+        if (detected.framework && detected.framework !== project.framework) {
+          db.updateProject(project.id, {
+            framework: detected.framework,
+            buildCommand: detected.buildCommand || project.buildCommand,
+            installCommand: detected.installCommand || project.installCommand,
+            outputDirectory: detected.outputDirectory || project.outputDirectory,
+          });
+        }
       }
     } else if (contentType.includes('application/json')) {
       const body = await req.json();
 
-      if (body.templateId) {
-        const template = STARTER_TEMPLATES.find((t) => t.id === body.templateId);
-        if (!template) {
-          return NextResponse.json({ error: 'Invalid starter template specified' }, { status: 400 });
-        }
-
-        filesToDeploy = template.files.map((f) => ({
-          file: f.file,
-          data: f.data,
-          encoding: 'utf-8',
-        }));
-
-        sourceType = 'template';
-        sourceName = template.name;
-        commitMsg = `Initial deployment with ${template.name}`;
-
-        // Sync template framework & build settings
-        db.updateProject(project.id, {
-          framework: template.framework,
-          buildCommand: template.buildCommand,
-          installCommand: template.installCommand,
-          outputDirectory: template.outputDirectory,
-        });
-      } else if (body.gitUrl) {
+      if (body.gitUrl) {
         const rawUrl = (body.gitUrl as string).trim();
         const match = rawUrl.match(/github\.com\/([^\/]+)\/([^\/\#\?]+)/i);
         sourceType = 'git';
@@ -149,21 +148,11 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           }
 
           if (!downloaded || filesToDeploy.length === 0) {
-            // If repository requires auth or branch is different, deploy standard boilerplate
-            const template = STARTER_TEMPLATES[0];
-            filesToDeploy = template.files.map((f) => ({
-              file: f.file,
-              data: f.data,
-              encoding: 'utf-8',
-            }));
+            // Default empty deployment if repo not found or private
+            filesToDeploy = [{ file: 'index.html', data: '<h1>Project Deployed via Git</h1>', encoding: 'utf-8' }];
           }
         } else {
-          const template = STARTER_TEMPLATES[0];
-          filesToDeploy = template.files.map((f) => ({
-            file: f.file,
-            data: f.data,
-            encoding: 'utf-8',
-          }));
+          filesToDeploy = [{ file: 'index.html', data: '<h1>Project Deployed via Git</h1>', encoding: 'utf-8' }];
           sourceName = `Git (${rawUrl})`;
           commitMsg = `Deploy from ${rawUrl}`;
         }
@@ -179,16 +168,17 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           });
         }
       } else if (body.redeploy) {
-        // Find latest successful deployment or fallback to minimal template
+        // Find latest successful deployment
         const prev = db.getDeploymentsByProjectId(project.id);
-        const template = STARTER_TEMPLATES[0]; // fallback default
-        filesToDeploy = template.files.map((f) => ({
-          file: f.file,
-          data: f.data,
-          encoding: 'utf-8',
-        }));
-        sourceType = 'template';
-        sourceName = prev[0]?.sourceName || 'Redeploy Current Revision';
+        if (prev.length > 0) {
+           // This is a simplified redeploy - in reality you might fetch the actual files from previous build
+           filesToDeploy = [{ file: 'index.html', data: '<h1>Redeployed Project</h1>', encoding: 'utf-8' }];
+           sourceName = prev[0].sourceName || 'Redeploy';
+        } else {
+           filesToDeploy = [{ file: 'index.html', data: '<h1>New Project</h1>', encoding: 'utf-8' }];
+           sourceName = 'Initial Deploy';
+        }
+        sourceType = 'zip';
         commitMsg = 'Manual trigger redeploy';
       } else if (Array.isArray(body.files)) {
         filesToDeploy = body.files;

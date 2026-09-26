@@ -107,7 +107,7 @@ export default function DocsPage() {
                   <strong className="text-neutral-900">Create Project:</strong> Click &ldquo;+ New Project&rdquo; and enter your project name and slug (e.g. <code className="font-mono text-xs bg-neutral-100 px-1 py-0.5 rounded">my-project</code>).
                 </li>
                 <li>
-                  <strong className="text-neutral-900">Choose Source:</strong> Select a template or upload a ZIP file of your website.
+                  <strong className="text-neutral-900">Choose Source:</strong> Upload a ZIP file or a single HTML file of your website.
                 </li>
                 <li>
                   <strong className="text-neutral-900">Live URL:</strong> Your website is deployed to edge Anycast and live at <code className="font-mono text-xs bg-neutral-100 px-1 py-0.5 rounded">https://my-project.{baseDomain}</code>.

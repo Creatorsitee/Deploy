@@ -16,28 +16,20 @@ export async function POST(req: NextRequest) {
       : currentDb.users.filter((u) => u.role === 'admin' || u.id === admin.id);
 
     // Reset projects, deployments, domains, and env vars
-    currentDb.projects = [];
-    currentDb.deployments = [];
-    currentDb.domains = [];
-    currentDb.environmentVariables = [];
-    currentDb.users = preservedUsers;
-
-    currentDb.auditLogs = [
-      {
-        id: `log_reset_${Date.now()}`,
-        userId: admin.id,
-        userEmail: admin.email,
-        action: 'DATABASE_RESET',
-        metadata: {
-          performedBy: admin.email,
-          usersPreserved: preservedUsers.length,
-          timestamp: new Date().toISOString(),
-        },
-        createdAt: new Date().toISOString(),
+    const resetLog = {
+      id: `log_reset_${Date.now()}`,
+      userId: admin.id,
+      userEmail: admin.email,
+      action: 'DATABASE_RESET',
+      metadata: {
+        performedBy: admin.email,
+        usersPreserved: preservedUsers.length,
+        timestamp: new Date().toISOString(),
       },
-    ];
+      createdAt: new Date().toISOString(),
+    };
 
-    saveDb(currentDb);
+    await db.resetDatabaseAndSync(preservedUsers, resetLog);
 
     return NextResponse.json({
       success: true,

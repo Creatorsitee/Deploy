@@ -7,6 +7,7 @@ import { authFetch } from '@/lib/auth/client';
 import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
 import { useToast } from '@/components/Providers';
+import { safeJson } from '@/lib/fetch-utils';
 import {
   detectEnvFromZip,
   parseEnvString,
@@ -15,7 +16,6 @@ import {
 import {
   UploadCloud,
   FileArchive,
-  Sparkles,
   ArrowRight,
   ArrowLeft,
   CheckCircle2,
@@ -40,7 +40,6 @@ import {
   FileText,
   ShieldCheck,
 } from 'lucide-react';
-import { STARTER_TEMPLATES } from '@/lib/templates';
 
 interface EnvVarItem {
   id: string;
@@ -65,9 +64,8 @@ export default function NewProjectPage() {
   const [isVercelConfigured, setIsVercelConfigured] = useState<boolean>(true);
 
   // Step 2: Source Code
-  const [sourceType, setSourceType] = useState<'zip' | 'template' | 'git'>('template');
-  const [selectedTemplateId, setSelectedTemplateId] = useState('minimal-portfolio');
-  const [zipFile, setZipFile] = useState<File | null>(null);
+  const [sourceType, setSourceType] = useState<'upload' | 'git'>('upload');
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
   const [gitUrl, setGitUrl] = useState('');
 
   // Step 3: Framework & Build Settings & Environment Variables
@@ -97,12 +95,20 @@ export default function NewProjectPage() {
       let foundVars: { key: string; value: string; target?: ('production' | 'preview' | 'development')[] }[] = [];
       let summaryText = '';
 
-      if (sourceType === 'zip' && zipFile) {
-        const detection = await detectEnvFromZip(zipFile);
-        foundVars = detection.variables;
-        summaryText = detection.summary;
-        if (detection.detectedFramework) {
-          setFramework(detection.detectedFramework);
+      if (sourceType === 'upload' && uploadedFile) {
+        if (uploadedFile.name.endsWith('.zip')) {
+          const detection = await detectEnvFromZip(uploadedFile);
+          foundVars = detection.variables;
+          summaryText = detection.summary;
+          if (detection.detectedFramework) {
+            setFramework(detection.detectedFramework);
+          }
+        } else {
+          // HTML or other single file
+          const fullDomain = `${projectSlug || 'my-project'}.${selectedDomain}`;
+          foundVars = detectRecommendedEnvForFramework('static', projectName, fullDomain);
+          summaryText = `Detected recommended variables for static site.`;
+          setFramework('static');
         }
       } else {
         const fullDomain = `${projectSlug || 'my-project'}.${selectedDomain}`;
@@ -175,25 +181,29 @@ export default function NewProjectPage() {
         ]);
 
         if (configRes.ok) {
-          const data = await configRes.json();
-          if (data.isVercelConfigured !== undefined) {
-            setIsVercelConfigured(data.isVercelConfigured);
-          }
-          if (Array.isArray(data.availableDomains) && data.availableDomains.length > 0) {
-            setAvailableDomains(data.availableDomains);
-            setSelectedDomain(data.baseDomain || data.availableDomains[0]);
-          } else if (data.baseDomain) {
-            setAvailableDomains([data.baseDomain]);
-            setSelectedDomain(data.baseDomain);
+          const data = await safeJson(configRes);
+          if (data) {
+            if (data.isVercelConfigured !== undefined) {
+              setIsVercelConfigured(data.isVercelConfigured);
+            }
+            if (Array.isArray(data.availableDomains) && data.availableDomains.length > 0) {
+              setAvailableDomains(data.availableDomains);
+              setSelectedDomain(data.baseDomain || data.availableDomains[0]);
+            } else if (data.baseDomain) {
+              setAvailableDomains([data.baseDomain]);
+              setSelectedDomain(data.baseDomain);
+            }
           }
         }
 
         if (projectsRes && projectsRes.ok) {
-          const pData = await projectsRes.json();
-          const count = Array.isArray(pData.projects) ? pData.projects.length : 0;
-          setUserProjectCount(count);
-          if (count >= 3) {
-            setIsLimitReached(true);
+          const pData = await safeJson(projectsRes);
+          if (pData) {
+            const count = Array.isArray(pData.projects) ? pData.projects.length : 0;
+            setUserProjectCount(count);
+            if (count >= 3) {
+              setIsLimitReached(true);
+            }
           }
         }
       } catch (e) {
@@ -216,28 +226,40 @@ export default function NewProjectPage() {
     setProjectSlug(generated);
   };
 
-  const handleSelectTemplate = (tmplId: string) => {
-    setSelectedTemplateId(tmplId);
-    const tmpl = STARTER_TEMPLATES.find((t) => t.id === tmplId);
-    if (tmpl) {
-      setFramework(tmpl.framework);
-      setBuildCommand(tmpl.buildCommand);
-      setInstallCommand(tmpl.installCommand);
-      setOutputDirectory(tmpl.outputDirectory);
-    }
-  };
-
-  const handleZipDrop = (e: React.DragEvent) => {
+  const handleFileDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
       const file = e.dataTransfer.files[0];
-      if (file.name.endsWith('.zip')) {
-        setZipFile(file);
-        const autoName = file.name.replace(/\.zip$/i, '');
-        if (!projectName) {
-          setProjectName(autoName);
-          setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-        }
+      processFile(file);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      processFile(file);
+    }
+  };
+
+  const processFile = (file: File) => {
+    const isZip = file.name.toLowerCase().endsWith('.zip');
+    const isHtml = file.name.toLowerCase().endsWith('.html');
+
+    if (isZip || isHtml) {
+      setUploadedFile(file);
+      const autoName = file.name.replace(/\.(zip|html)$/i, '');
+      if (!projectName) {
+        setProjectName(autoName);
+        setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
+      }
+
+      if (isHtml) {
+        setFramework('static');
+        setBuildCommand('');
+        setInstallCommand('');
+        setOutputDirectory('./');
+      } else {
+        // Default framework for ZIP if not detected yet
         const lowName = file.name.toLowerCase();
         let autoFw = 'nextjs';
         if (lowName.includes('vite')) autoFw = 'vite';
@@ -255,38 +277,9 @@ export default function NewProjectPage() {
           setOutputDirectory(preset.defaultOutput);
           setInstallCommand(preset.defaultInstall);
         }
-      } else {
-        setErrorMessage('Only .zip archives are allowed');
       }
-    }
-  };
-
-  const handleZipSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      setZipFile(file);
-      const autoName = file.name.replace(/\.zip$/i, '');
-      if (!projectName) {
-        setProjectName(autoName);
-        setProjectSlug(autoName.toLowerCase().replace(/[^a-z0-9-]/g, '-'));
-      }
-      const lowName = file.name.toLowerCase();
-      let autoFw = 'nextjs';
-      if (lowName.includes('vite')) autoFw = 'vite';
-      else if (lowName.includes('astro')) autoFw = 'astro';
-      else if (lowName.includes('vue')) autoFw = 'vue';
-      else if (lowName.includes('nuxt')) autoFw = 'nuxt';
-      else if (lowName.includes('svelte')) autoFw = 'svelte';
-      else if (lowName.includes('react')) autoFw = 'react';
-      else if (lowName.includes('next')) autoFw = 'nextjs';
-
-      setFramework(autoFw);
-      const preset = VERCEL_FRAMEWORKS[autoFw];
-      if (preset) {
-        setBuildCommand(preset.defaultBuild);
-        setOutputDirectory(preset.defaultOutput);
-        setInstallCommand(preset.defaultInstall);
-      }
+    } else {
+      setErrorMessage('Only .zip and .html files are allowed');
     }
   };
 
@@ -397,20 +390,18 @@ export default function NewProjectPage() {
       setDeployStepIndex(2);
       let deployRes: Response;
 
-      if (sourceType === 'zip' && zipFile) {
+      if (sourceType === 'upload' && uploadedFile) {
+        const isHtml = uploadedFile.name.toLowerCase().endsWith('.html');
         const formData = new FormData();
-        formData.append('file', zipFile);
-        formData.append('commitMessage', `Initial ZIP upload (${zipFile.name})`);
+        formData.append('file', uploadedFile);
+        formData.append('commitMessage', `Initial upload (${uploadedFile.name})`);
+        if (isHtml) {
+          formData.append('isSingleHtml', 'true');
+        }
 
         deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
           method: 'POST',
           body: formData,
-        });
-      } else if (sourceType === 'template') {
-        deployRes = await authFetch(`/api/projects/${project.id}/deploy`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ templateId: selectedTemplateId }),
         });
       } else {
         // Git repository deployment
@@ -419,7 +410,6 @@ export default function NewProjectPage() {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             gitUrl: gitUrl.trim(),
-            templateId: 'minimal-portfolio',
           }),
         });
       }
@@ -640,35 +630,19 @@ export default function NewProjectPage() {
             </div>
 
             {/* Source Selection Tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5 sm:gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 sm:gap-3">
               <button
                 type="button"
-                onClick={() => setSourceType('template')}
+                onClick={() => setSourceType('upload')}
                 className={`p-3.5 sm:p-4 border rounded-xl text-left transition flex sm:flex-col justify-between items-start gap-2 ${
-                  sourceType === 'template'
+                  sourceType === 'upload'
                     ? 'border-neutral-950 bg-neutral-50 shadow-2xs'
                     : 'border-neutral-200 hover:border-neutral-300'
                 }`}
               >
                 <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-neutral-950">Starter Template</div>
-                  <div className="text-[11px] text-neutral-500">Pre-built, ready in 1 click</div>
-                </div>
-                <Sparkles className="w-4 h-4 text-amber-500 shrink-0" />
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setSourceType('zip')}
-                className={`p-3.5 sm:p-4 border rounded-xl text-left transition flex sm:flex-col justify-between items-start gap-2 ${
-                  sourceType === 'zip'
-                    ? 'border-neutral-950 bg-neutral-50 shadow-2xs'
-                    : 'border-neutral-200 hover:border-neutral-300'
-                }`}
-              >
-                <div className="space-y-0.5">
-                  <div className="text-xs font-bold text-neutral-950">Upload ZIP</div>
-                  <div className="text-[11px] text-neutral-500">HTML, Vite, or Next.js</div>
+                  <div className="text-xs font-bold text-neutral-950">Upload File</div>
+                  <div className="text-[11px] text-neutral-500">ZIP archive or .html file</div>
                 </div>
                 <UploadCloud className="w-4 h-4 text-neutral-900 shrink-0" />
               </button>
@@ -690,81 +664,43 @@ export default function NewProjectPage() {
               </button>
             </div>
 
-            {/* Template selector */}
-            {sourceType === 'template' && (
-              <div className="space-y-3 pt-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-700">
-                  Select a Starter Template
-                </label>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  {STARTER_TEMPLATES.map((tmpl) => (
-                    <div
-                      key={tmpl.id}
-                      onClick={() => handleSelectTemplate(tmpl.id)}
-                      className={`p-4 border rounded-xl cursor-pointer transition ${
-                        selectedTemplateId === tmpl.id
-                          ? 'border-neutral-950 bg-neutral-900 text-white shadow-2xs'
-                          : 'border-neutral-200 bg-white hover:border-neutral-400 text-neutral-900'
-                      }`}
-                    >
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-xs">{tmpl.name}</span>
-                        <span
-                          className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded ${
-                            selectedTemplateId === tmpl.id
-                              ? 'bg-neutral-800 text-neutral-300'
-                              : 'bg-neutral-100 text-neutral-600'
-                          }`}
-                        >
-                          {tmpl.framework}
-                        </span>
-                      </div>
-                      <p
-                        className={`text-xs mt-2 leading-relaxed ${
-                          selectedTemplateId === tmpl.id ? 'text-neutral-400' : 'text-neutral-500'
-                        }`}
-                      >
-                        {tmpl.description}
-                      </p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* ZIP upload dropzone */}
-            {sourceType === 'zip' && (
+            {/* File upload dropzone */}
+            {sourceType === 'upload' && (
               <div className="space-y-3 pt-2">
                 <div
                   onDragOver={(e) => e.preventDefault()}
-                  onDrop={handleZipDrop}
+                  onDrop={handleFileDrop}
                   onClick={() => fileInputRef.current?.click()}
                   className="border-2 border-dashed border-neutral-300 hover:border-neutral-950 rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition bg-neutral-50 hover:bg-white"
                 >
                   <input
                     type="file"
                     ref={fileInputRef}
-                    accept=".zip"
-                    onChange={handleZipSelect}
+                    accept=".zip,.html"
+                    onChange={handleFileSelect}
                     className="hidden"
                   />
                   <div className="w-12 h-12 rounded-2xl bg-neutral-100 flex items-center justify-center mx-auto text-neutral-500 mb-3">
-                    <FileArchive className="w-6 h-6" />
+                    {uploadedFile?.name.endsWith('.html') ? (
+                      <FileText className="w-6 h-6" />
+                    ) : (
+                      <UploadCloud className="w-6 h-6" />
+                    )}
                   </div>
-                  {zipFile ? (
+                  {uploadedFile ? (
                     <div>
-                      <div className="text-xs font-bold text-emerald-700">✓ {zipFile.name}</div>
+                      <div className="text-xs font-bold text-emerald-700">✓ {uploadedFile.name}</div>
                       <div className="text-[11px] text-neutral-400 mt-1">
-                        {(zipFile.size / 1024 / 1024).toFixed(2)} MB · Click or drag another file to replace
+                        {(uploadedFile.size / (uploadedFile.name.endsWith('.zip') ? 1024 * 1024 : 1024)).toFixed(2)} {uploadedFile.name.endsWith('.zip') ? 'MB' : 'KB'} · Click or drag another file to replace
                       </div>
                     </div>
                   ) : (
                     <div>
                       <div className="text-xs font-bold text-neutral-900">
-                        Drag and drop your project ZIP file here
+                        Drag and drop your project ZIP or HTML file here
                       </div>
                       <div className="text-[11px] text-neutral-500 mt-1">
-                        Up to 50MB uncompressed · Contains index.html or package.json
+                        Up to 50MB uncompressed · Contains package.json or index.html
                       </div>
                     </div>
                   )}
@@ -802,7 +738,7 @@ export default function NewProjectPage() {
               </button>
               <button
                 type="button"
-                disabled={sourceType === 'zip' && !zipFile}
+                disabled={sourceType === 'upload' && !uploadedFile}
                 onClick={() => {
                   setStep(3);
                   handleAutoDetectEnv();
@@ -1082,10 +1018,8 @@ export default function NewProjectPage() {
                   Source Type
                 </span>
                 <div className="capitalize font-medium text-neutral-800 mt-0.5">
-                  {sourceType === 'zip'
-                    ? `ZIP Archive (${zipFile?.name})`
-                    : sourceType === 'template'
-                    ? `Starter Template (${selectedTemplateId})`
+                  {sourceType === 'upload'
+                    ? `File Upload (${uploadedFile?.name})`
                     : `Git (${gitUrl})`}
                 </div>
               </div>
