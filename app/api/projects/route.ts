@@ -49,9 +49,11 @@ export async function GET() {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  // Admin can view all projects if requested, otherwise user's own
-  const projects = user.role === 'admin' ? db.getAllProjects() : db.getProjectsByUserId(user.id);
   const sysConfig = db.getSystemConfig();
+
+  // DASHBOARD ISOLATION: Even admins only see their own projects in the main dashboard view.
+  // Use the Admin Panel (/admin) to view global platform projects.
+  const projects = db.getProjectsByUserId(user.id);
 
   // Attach latest deployment & domain count to each project
   const enriched = projects.map((p) => {
@@ -88,7 +90,9 @@ export async function POST(req: NextRequest) {
     const userProjects = db.getProjectsByUserId(user.id);
     const maxProjects = sysConfig.maxProjectsPerUser || 3;
 
-    if (user.role !== 'admin' && userProjects.length >= maxProjects) {
+    // Strict enforcement for all users. Admins can override this in the database directly or Admin Panel if needed,
+    // but the UI should behave consistently for everyone to avoid confusion.
+    if (userProjects.length >= maxProjects) {
       return NextResponse.json(
         {
           error: `Project limit reached. Accounts are limited to ${maxProjects} active projects. Please delete an existing project before creating a new one.`,

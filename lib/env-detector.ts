@@ -180,12 +180,10 @@ export async function detectEnvFromZip(file: File): Promise<EnvDetectionResult> 
       }
     }
 
-    // Fallback: standard web environment
+    // Fallback: no specific environment needed for generic static files
     return {
-      variables: [
-        { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'], source: 'Standard Web' },
-      ],
-      summary: 'Configured standard production environment variables.',
+      variables: [],
+      summary: 'No environment variables required for standard static site.',
     };
   } catch (err: any) {
     return {
@@ -232,6 +230,8 @@ export function detectRecommendedEnvForFramework(
         { key: 'PUBLIC_SITE_URL', value: baseAppUrl, target: ['production', 'preview', 'development'] },
         { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] },
       ];
+    case 'static':
+      return [];
     default:
       return [
         { key: 'NODE_ENV', value: 'production', target: ['production', 'preview', 'development'] },

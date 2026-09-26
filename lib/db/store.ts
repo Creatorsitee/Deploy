@@ -409,7 +409,7 @@ export const db = {
       baseDomain: activeBaseDomain,
       availableDomains: domains,
       allowPublicRegistration: data.systemConfig.allowPublicRegistration ?? true,
-      maxProjectsPerUser: data.systemConfig.maxProjectsPerUser ?? 10,
+      maxProjectsPerUser: data.systemConfig.maxProjectsPerUser ?? 3,
       maxDeploymentsPerDay: data.systemConfig.maxDeploymentsPerDay ?? 50,
     };
   },
@@ -419,18 +419,6 @@ export const db = {
     data.systemConfig = { ...data.systemConfig, ...updates };
     saveDb(data);
     return data.systemConfig;
-  },
-
-  // Clear or Seed Database Async
-  async clearAllCollections() {
-     const data = getDb();
-     data.projects = [];
-     data.deployments = [];
-     data.domains = [];
-     data.environmentVariables = [];
-     data.users = [];
-     data.auditLogs = [];
-     saveDb(data);
   },
 
   async resetDatabaseAndSync(preservedUsers: User[], resetLog: AuditLog) {

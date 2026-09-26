@@ -5,6 +5,7 @@ import { getVercelConfig } from '@/lib/vercel/client';
 import { createVercelProject } from '@/lib/vercel/projects';
 import { createVercelDeployment, getVercelDeployment, getVercelDeploymentEvents } from '@/lib/vercel/deployments';
 import { addVercelProjectDomain, getVercelDomainConfig } from '@/lib/vercel/domains';
+import { getVercelFrameworkId } from '@/lib/vercel/frameworks';
 
 export interface ExtractedFile {
   file: string;
@@ -327,7 +328,7 @@ export async function executeDeployment(params: {
         encoding: f.encoding || 'utf-8',
       })),
       projectSettings: {
-        framework: project.framework === 'static' ? null : project.framework,
+        framework: getVercelFrameworkId(project.framework),
         buildCommand: project.buildCommand || null,
         outputDirectory: project.outputDirectory || null,
       },

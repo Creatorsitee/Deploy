@@ -17,6 +17,18 @@ export type FrameworkType =
   | 'vue'
   | 'nuxt'
   | 'astro'
+  | 'svelte'
+  | 'remix'
+  | 'gatsby'
+  | 'angular'
+  | 'ember'
+  | 'hugo'
+  | 'jekyll'
+  | 'eleventy'
+  | 'docusaurus'
+  | 'solid'
+  | 'qwik'
+  | 'redwood'
   | 'other';
 
 export type ProjectStatus = 'ACTIVE' | 'SUSPENDED' | 'MAINTENANCE';

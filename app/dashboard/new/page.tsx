@@ -6,7 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
 import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
-import { useToast } from '@/components/Providers';
+import { useToast } from '@/lib/contexts/ToastContext';
 import { safeJson } from '@/lib/fetch-utils';
 import EnvVarEditor from '@/components/EnvVarEditor';
 import {

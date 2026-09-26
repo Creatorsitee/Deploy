@@ -5,7 +5,7 @@ import crypto from 'crypto';
  */
 export async function hashPassword(password: string): Promise<string> {
   const salt = crypto.randomBytes(16).toString('hex');
-  const iterations = 10000;
+  const iterations = 100000;
   const hash = crypto.pbkdf2Sync(password, salt, iterations, 32, 'sha256').toString('hex');
   return `pbkdf2:${iterations}:${salt}:${hash}`;
 }

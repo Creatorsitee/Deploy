@@ -219,7 +219,8 @@ export function getVercelFrameworkId(frameworkKey?: string | null): string | nul
   if (!frameworkKey) return null;
   const match = VERCEL_FRAMEWORKS[frameworkKey];
   if (match) return match.vercelId;
-  return frameworkKey === 'static' ? null : frameworkKey;
+  if (frameworkKey === 'static' || frameworkKey === 'other') return null;
+  return frameworkKey;
 }
 
 /**

@@ -5,7 +5,7 @@ import { User } from '@/lib/types';
 import { NextRequest } from 'next/server';
 
 const SESSION_COOKIE = 'cmnty_session';
-const SECRET = process.env.SESSION_SECRET || 'cmnty-hosting-super-secret-key-32-chars-minimum';
+const SECRET = process.env.SESSION_SECRET || 'cmnty-hosting-super-secure-key-32-chars-minimum-v2-isolated';
 
 interface SessionPayload {
   userId: string;

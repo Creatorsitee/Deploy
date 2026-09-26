@@ -7,7 +7,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DeploymentStatusBadge from '@/components/DeploymentStatusBadge';
 import SslStatusBadge from '@/components/SslStatusBadge';
 import { authFetch } from '@/lib/auth/client';
-import { useToast } from '@/components/Providers';
+import { useToast } from '@/lib/contexts/ToastContext';
 import { safeJson } from '@/lib/fetch-utils';
 import { parseEnvString, detectRecommendedEnvForFramework } from '@/lib/env-detector';
 import {

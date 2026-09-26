@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
-import { useToast } from '@/components/Providers';
+import { useToast } from '@/lib/contexts/ToastContext';
 import { safeJson } from '@/lib/fetch-utils';
 import {
   Shield,
