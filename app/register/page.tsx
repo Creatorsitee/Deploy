@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { ArrowRight, AlertCircle, CheckCircle2 } from 'lucide-react';
 import { setAuthSession, getStoredToken, getStoredUser } from '@/lib/auth/client';
+import { safeJson } from '@/lib/fetch-utils';
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -35,14 +36,14 @@ export default function RegisterPage() {
         body: JSON.stringify({ name, email, password }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to register account');
+        throw new Error(data?.error || 'Failed to register account');
       }
 
       // Store auth session immediately in localStorage
-      if (data.token && data.user) {
+      if (data && data.token && data.user) {
         setAuthSession(data.token, data.user);
       }
 

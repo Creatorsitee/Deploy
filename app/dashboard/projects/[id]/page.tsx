@@ -148,13 +148,13 @@ export default function ProjectDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ redeploy: true }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
         toast.success('Deployment triggered successfully!');
         refreshProject();
         setActiveTab('deployments');
       } else {
-        toast.error(data.error || 'Failed to trigger redeploy');
+        toast.error(data?.error || 'Failed to trigger redeploy');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error triggering redeploy');
@@ -173,8 +173,8 @@ export default function ProjectDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: newDomain }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to add domain');
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.error || 'Failed to add domain');
       setNewDomain('');
       toast.success(`Domain "${newDomain}" added successfully!`);
       refreshProject();
@@ -193,11 +193,11 @@ export default function ProjectDetailPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ domain: domainName }),
       });
-      const data = await res.json();
+      const data = await safeJson(res);
       if (res.ok) {
-        toast.success(data.message || `Domain "${domainName}" verification completed`);
+        toast.success(data?.message || `Domain "${domainName}" verification completed`);
       } else {
-        toast.error(data.error || 'Domain verification check failed');
+        toast.error(data?.error || 'Domain verification check failed');
       }
       refreshProject();
     } catch (err: any) {
@@ -220,8 +220,8 @@ export default function ProjectDetailPage() {
             toast.success(`Domain "${domainName}" removed`);
             refreshProject();
           } else {
-            const data = await res.json();
-            toast.error(data.error || 'Failed to remove domain');
+            const data = await safeJson(res);
+            toast.error(data?.error || 'Failed to remove domain');
           }
         } catch (err: any) {
           toast.error(err.message || 'Failed to remove domain');
@@ -249,8 +249,8 @@ export default function ProjectDetailPage() {
         setNewEnvValue('');
         refreshProject();
       } else {
-        const d = await res.json();
-        toast.error(d.error || 'Failed to add environment variable');
+        const d = await safeJson(res);
+        toast.error(d?.error || 'Failed to add environment variable');
       }
     } catch (err: any) {
       toast.error(err.message || 'Failed to add environment variable');
@@ -344,8 +344,8 @@ export default function ProjectDetailPage() {
             toast.success(`Variable "${key}" removed`);
             refreshProject();
           } else {
-            const data = await res.json();
-            toast.error(data.error || 'Failed to remove variable');
+            const data = await safeJson(res);
+            toast.error(data?.error || 'Failed to remove variable');
           }
         } catch (err: any) {
           toast.error(err.message || 'Failed to remove variable');
@@ -375,8 +375,8 @@ export default function ProjectDetailPage() {
             toast.success(`Project "${project.name}" deleted`);
             router.push('/dashboard');
           } else {
-            const d = await res.json();
-            toast.error(d.error || 'Failed to delete project');
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to delete project');
           }
         } catch (err: any) {
           toast.error(err.message || 'Failed to delete project');

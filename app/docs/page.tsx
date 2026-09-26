@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { useState, useEffect } from 'react';
 import Navbar from '@/components/Navbar';
 import Footer from '@/components/Footer';
+import { safeJson } from '@/lib/fetch-utils';
 import {
   BookOpen,
   ArrowRight,
@@ -14,9 +15,9 @@ export default function DocsPage() {
 
   useEffect(() => {
     fetch('/api/config')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (d.baseDomain) setBaseDomain(d.baseDomain);
+        if (d && d.baseDomain) setBaseDomain(d.baseDomain);
       })
       .catch(() => {});
   }, []);

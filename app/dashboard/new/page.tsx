@@ -8,6 +8,7 @@ import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
 import { useToast } from '@/components/Providers';
 import { safeJson } from '@/lib/fetch-utils';
+import EnvVarEditor from '@/components/EnvVarEditor';
 import {
   detectEnvFromZip,
   parseEnvString,
@@ -78,11 +79,7 @@ export default function NewProjectPage() {
   const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
   const [newEnvKey, setNewEnvKey] = useState('');
   const [newEnvValue, setNewEnvValue] = useState('');
-  const [newEnvTargets, setNewEnvTargets] = useState<('production' | 'preview' | 'development')[]>([
-    'production',
-    'preview',
-    'development',
-  ]);
+  const [newEnvTargets, setNewEnvTargets] = useState<('production' | 'preview' | 'development')[]>(['production', 'preview', 'development']);
   const [showBulkModal, setShowBulkModal] = useState(false);
   const [bulkEnvText, setBulkEnvText] = useState('');
   const [detectingEnv, setDetectingEnv] = useState(false);
@@ -378,9 +375,9 @@ export default function NewProjectPage() {
         }),
       });
 
-      const projData = await projRes.json();
+      const projData = await safeJson(projRes);
       if (!projRes.ok) {
-        throw new Error(projData.error || 'Failed to create project');
+        throw new Error(projData?.error || 'Failed to create project');
       }
 
       const project = projData.project;
@@ -415,9 +412,9 @@ export default function NewProjectPage() {
       }
 
       setDeployStepIndex(3);
-      const deployData = await deployRes.json();
+      const deployData = await safeJson(deployRes);
       if (!deployRes.ok) {
-        throw new Error(deployData.error || 'Deployment failed');
+        throw new Error(deployData?.error || 'Deployment failed');
       }
 
       const deployment = deployData.deployment;

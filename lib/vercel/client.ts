@@ -1,4 +1,5 @@
 import { db } from '@/lib/db/store';
+import { safeJson } from '@/lib/fetch-utils';
 
 const VERCEL_API_BASE = 'https://api.vercel.com';
 
@@ -93,9 +94,12 @@ export async function vercelFetch<T = unknown>(
     let responseData: any = null;
 
     if (contentType.includes('application/json')) {
-      responseData = await res.json();
+      responseData = await safeJson(res);
     } else {
       const text = await res.text();
+      if (text.includes('Rate exceeded')) {
+        throw new Error('System is currently busy (Rate Limit Exceeded). Please try again in a few moments.');
+      }
       responseData = { text };
     }
 

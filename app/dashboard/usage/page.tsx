@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
+import { safeJson } from '@/lib/fetch-utils';
 import { Layers, Rocket, ShieldCheck } from 'lucide-react';
 
 export default function UsagePage() {
@@ -12,9 +13,9 @@ export default function UsagePage() {
 
   useEffect(() => {
     authFetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (d.projects) {
+        if (d && d.projects) {
           setProjectsCount(d.projects.length);
           const totalDeps = d.projects.reduce(
             (acc: number, p: any) => acc + (p.deploymentsCount || 1),

@@ -6,6 +6,7 @@ import DashboardLayout from '@/components/DashboardLayout';
 import DeploymentStatusBadge from '@/components/DeploymentStatusBadge';
 import { Plus, ExternalLink, Search, RefreshCw, Layers, ArrowRight } from 'lucide-react';
 import { authFetch } from '@/lib/auth/client';
+import { safeJson } from '@/lib/fetch-utils';
 
 export default function ProjectsDirectoryPage() {
   const [projects, setProjects] = useState<any[]>([]);
@@ -14,9 +15,9 @@ export default function ProjectsDirectoryPage() {
 
   const fetchProjects = () => {
     authFetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (d.projects) setProjects(d.projects);
+        if (d && d.projects) setProjects(d.projects);
       })
       .catch((err) => console.error(err))
       .finally(() => setLoading(false));
@@ -25,9 +26,9 @@ export default function ProjectsDirectoryPage() {
   useEffect(() => {
     let isMounted = true;
     authFetch('/api/projects')
-      .then((r) => r.json())
+      .then((r) => safeJson(r))
       .then((d) => {
-        if (isMounted && d.projects) setProjects(d.projects);
+        if (isMounted && d && d.projects) setProjects(d.projects);
       })
       .catch((err) => console.error(err))
       .finally(() => {

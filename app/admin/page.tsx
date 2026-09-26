@@ -5,6 +5,7 @@ import Link from 'next/link';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
 import { useToast } from '@/components/Providers';
+import { safeJson } from '@/lib/fetch-utils';
 import {
   Shield,
   Server,
@@ -60,12 +61,12 @@ export default function AdminDashboardPage() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ keepUsers: true }),
           });
-          const d = await res.json();
+          const d = await safeJson(res);
           if (res.ok) {
             toast.success('Database reset successfully! All test projects and logs cleared.');
             loadAdminData();
           } else {
-            toast.error(d.error || 'Failed to clean database');
+            toast.error(d?.error || 'Failed to clean database');
           }
         } catch (err: any) {
           toast.error(err.message || 'Error cleaning database');
@@ -89,16 +90,18 @@ export default function AdminDashboardPage() {
         }
         return;
       }
-      const json = await res.json();
-      setData(json);
+      const json = await safeJson(res);
+      if (json) setData(json);
 
       // Load settings & domains
       const settingsRes = await authFetch('/api/admin/settings');
       if (settingsRes.ok) {
-        const sData = await settingsRes.json();
-        setTeamIdInput(sData.settings?.vercelTeamId || '');
-        setBaseDomainInput(sData.settings?.baseDomain || 'cmnty.biz.id');
-        setAvailableDomainsList(sData.settings?.availableDomains || [sData.settings?.baseDomain || 'cmnty.biz.id']);
+        const sData = await safeJson(settingsRes);
+        if (sData) {
+          setTeamIdInput(sData.settings?.vercelTeamId || '');
+          setBaseDomainInput(sData.settings?.baseDomain || 'cmnty.biz.id');
+          setAvailableDomainsList(sData.settings?.availableDomains || [sData.settings?.baseDomain || 'cmnty.biz.id']);
+        }
       }
     } catch (err: any) {
       setError(err.message || 'Error loading admin data');
@@ -123,13 +126,13 @@ export default function AdminDashboardPage() {
           }
           return;
         }
-        const json = await res.json();
-        if (isMounted) setData(json);
+        const json = await safeJson(res);
+        if (isMounted && json) setData(json);
 
         const settingsRes = await authFetch('/api/admin/settings');
         if (settingsRes.ok) {
-          const sData = await settingsRes.json();
-          if (isMounted) {
+          const sData = await safeJson(settingsRes);
+          if (isMounted && sData) {
             setTeamIdInput(sData.settings?.vercelTeamId || '');
             setBaseDomainInput(sData.settings?.baseDomain || 'cmnty.biz.id');
             setAvailableDomainsList(sData.settings?.availableDomains || [sData.settings?.baseDomain || 'cmnty.biz.id']);
@@ -163,13 +166,13 @@ export default function AdminDashboardPage() {
           baseDomain: baseDomainInput,
         }),
       });
-      const resJson = await res.json();
+      const resJson = await safeJson(res);
       if (res.ok) {
         setSettingsStatus('Settings updated and stored in JSON database. Connection verified.');
         setTokenInput('');
         loadAdminData();
       } else {
-        setSettingsStatus(`Error: ${resJson.error}`);
+        setSettingsStatus(`Error: ${resJson?.error || 'Unknown error'}`);
       }
     } catch (err: any) {
       setSettingsStatus(`Error: ${err.message}`);
@@ -219,8 +222,8 @@ export default function AdminDashboardPage() {
             toast.success(`Domain "${domain}" removed successfully`);
             loadAdminData();
           } else {
-            const d = await res.json();
-            toast.error(d.error || 'Failed to remove domain');
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to remove domain');
           }
         } catch (err: any) {
           toast.error(err.message || 'Error removing domain');
@@ -242,8 +245,8 @@ export default function AdminDashboardPage() {
         toast.success(`Primary domain set to ${domain}`);
         loadAdminData();
       } else {
-        const d = await res.json();
-        toast.error(d.error || 'Failed to set primary domain');
+        const d = await safeJson(res);
+        toast.error(d?.error || 'Failed to set primary domain');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error setting primary domain');
@@ -268,8 +271,8 @@ export default function AdminDashboardPage() {
             toast.success(`User role updated to ${newRole.toUpperCase()}`);
             loadAdminData();
           } else {
-            const d = await res.json();
-            toast.error(d.error || 'Failed to update user role');
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to update user role');
           }
         } catch (err: any) {
           toast.error(err.message || 'Error updating user role');
@@ -291,8 +294,8 @@ export default function AdminDashboardPage() {
             toast.success(`User "${userEmail}" deleted`);
             loadAdminData();
           } else {
-            const d = await res.json();
-            toast.error(d.error || 'Failed to delete user');
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to delete user');
           }
         } catch (err: any) {
           toast.error(err.message || 'Error deleting user');
@@ -308,8 +311,8 @@ export default function AdminDashboardPage() {
         toast.success('Project status toggled');
         loadAdminData();
       } else {
-        const d = await res.json();
-        toast.error(d.error || 'Failed to toggle project status');
+        const d = await safeJson(res);
+        toast.error(d?.error || 'Failed to toggle project status');
       }
     } catch (err: any) {
       toast.error(err.message || 'Error toggling project status');
@@ -333,8 +336,8 @@ export default function AdminDashboardPage() {
             toast.success(`Project "${projectName}" permanently deleted`);
             loadAdminData();
           } else {
-            const d = await res.json();
-            toast.error(d.error || 'Failed to delete project');
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to delete project');
           }
         } catch (err: any) {
           toast.error(err.message || 'Error deleting project');
@@ -807,24 +810,6 @@ export default function AdminDashboardPage() {
               <div className="text-xs font-mono">
                 Latency: <span className="font-bold">{diagnostics?.latencyMs ? `${diagnostics.latencyMs}ms` : '—'}</span>
               </div>
-            </div>
-
-            <div className="p-4 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-900 space-y-2 animate-in fade-in duration-200">
-              <div className="flex items-center gap-2 font-bold text-blue-950">
-                <AlertCircle className="w-4 h-4 text-blue-600 shrink-0" />
-                <span>PENTING: Petunjuk Deployment di Vercel (Stateless/Serverless)</span>
-              </div>
-              <p className="leading-relaxed">
-                Karena platform ini dideploy ke <strong>Vercel</strong> (yang menggunakan sistem file <em>read-only</em> dan wadah serverless yang bersifat dinamis/ephemeral), penyimpanan ke database file lokal <code>cmnty_db.json</code> tidak dapat tersinkronisasi secara permanen di antara semua wadah Vercel Anda.
-              </p>
-              <p className="leading-relaxed font-semibold">
-                Untuk hasil yang 100% permanen dan lancar, harap tambahkan variabel lingkungan (Environment Variables) berikut langsung di dashboard proyek Vercel Anda, lalu lakukan <strong>Redeploy</strong>:
-              </p>
-              <ul className="list-disc pl-5 space-y-1 font-mono text-[11px] text-blue-950 bg-white/60 p-2.5 rounded-lg border border-blue-100">
-                <li><strong>VERCEL_TOKEN</strong> : [Token API Vercel Anda]</li>
-                <li><strong>VERCEL_TEAM_ID</strong> : [ID Tim Vercel Anda] (Opsional)</li>
-                <li><strong>BASE_DOMAIN</strong> : [Domain Utama Anda, misal: cmnty.biz.id]</li>
-              </ul>
             </div>
 
             {diagnostics?.error && (

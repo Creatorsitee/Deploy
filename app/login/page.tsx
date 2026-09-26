@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useState, useEffect } from 'react';
 import { ArrowRight, AlertCircle, Shield, KeyRound, Sparkles } from 'lucide-react';
 import { setAuthSession, getStoredToken, getStoredUser } from '@/lib/auth/client';
+import { safeJson } from '@/lib/fetch-utils';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -34,14 +35,14 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
 
-      const data = await res.json();
+      const data = await safeJson(res);
 
       if (!res.ok) {
-        throw new Error(data.error || 'Failed to sign in');
+        throw new Error(data?.error || 'Failed to sign in');
       }
 
       // Store auth session immediately in localStorage for iframe / cross-site persistence
-      if (data.token && data.user) {
+      if (data && data.token && data.user) {
         setAuthSession(data.token, data.user);
       }
 

@@ -1,8 +1,5 @@
 import fs from 'fs';
 import path from 'path';
-import { initializeApp, getApps, getApp } from 'firebase/app';
-import { getFirestore, doc, setDoc, deleteDoc, collection, getDocs, writeBatch } from 'firebase/firestore';
-import firebaseConfig from '../../firebase-applet-config.json';
 import {
   User,
   Project,
@@ -12,10 +9,6 @@ import {
   AuditLog,
   SystemConfig,
 } from '@/lib/types';
-
-// Initialize Firebase
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp();
-const firestore = getFirestore(app, firebaseConfig.firestoreDatabaseId);
 
 interface DatabaseSchema {
   users: User[];
@@ -92,107 +85,12 @@ function syncEnvAdmin(data: DatabaseSchema): void {
 
 // In-memory cache + resilient atomic file persistence
 let cachedDb: DatabaseSchema | null = null;
-let isFirestoreSynced = false;
 
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
   }
 }
-
-// Start async Firestore sync on file load to hydrate local cache
-async function syncFromFirestore() {
-  try {
-    const collectionsToFetch = ['users', 'projects', 'deployments', 'domains', 'environmentVariables', 'auditLogs'];
-    const newData: any = {
-      users: [],
-      projects: [],
-      deployments: [],
-      domains: [],
-      environmentVariables: [],
-      auditLogs: [],
-      systemConfig: defaultSystemConfig,
-    };
-
-    for (const collName of collectionsToFetch) {
-      const q = collection(firestore, collName);
-      const snap = await getDocs(q);
-      snap.forEach((doc) => {
-        newData[collName].push(doc.data());
-      });
-    }
-
-    // Fetch systemConfig
-    const configSnap = await getDocs(collection(firestore, 'systemConfig'));
-    configSnap.forEach((doc) => {
-      if (doc.id === 'global') {
-        newData.systemConfig = doc.data();
-      }
-    });
-
-    // Sort appropriately
-    newData.deployments.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-    newData.auditLogs.sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
-
-    // Only merge/overwrite if we actually retrieved data from Firestore
-    if (newData.users.length > 0 || newData.projects.length > 0 || newData.systemConfig.vercelToken) {
-      cachedDb = newData;
-      syncEnvAdmin(cachedDb!);
-      ensureDataDir();
-      fs.writeFileSync(DB_FILE, JSON.stringify(cachedDb, null, 2), 'utf-8');
-      console.log('[Firestore] Local cache successfully hydrated from cloud Firestore database!');
-    } else {
-      // If Firestore is empty but we have local file, push local file data to Firestore!
-      if (fs.existsSync(DB_FILE)) {
-        try {
-          const content = fs.readFileSync(DB_FILE, 'utf-8');
-          const localData = JSON.parse(content);
-          if (localData) {
-            console.log('[Firestore] Firestore is empty. Seeding Firestore with local cache...');
-            await pushLocalToFirestore(localData);
-          }
-        } catch (e) {
-          console.error('[Firestore] Failed to seed Firestore from local file', e);
-        }
-      }
-    }
-    isFirestoreSynced = true;
-  } catch (err) {
-    console.error('[Firestore] Failed to sync from Firestore on startup:', err);
-  }
-}
-
-async function pushLocalToFirestore(data: DatabaseSchema) {
-  try {
-    for (const u of data.users) {
-      await setDoc(doc(firestore, 'users', u.id), u);
-    }
-    for (const p of data.projects) {
-      await setDoc(doc(firestore, 'projects', p.id), p);
-    }
-    for (const d of data.deployments) {
-      await setDoc(doc(firestore, 'deployments', d.id), d);
-    }
-    for (const dom of data.domains) {
-      await setDoc(doc(firestore, 'domains', dom.id), dom);
-    }
-    for (const ev of data.environmentVariables) {
-      await setDoc(doc(firestore, 'environmentVariables', ev.id), ev);
-    }
-    for (const log of data.auditLogs) {
-      await setDoc(doc(firestore, 'auditLogs', log.id), log);
-    }
-    if (data.systemConfig) {
-      await setDoc(doc(firestore, 'systemConfig', 'global'), data.systemConfig);
-    }
-    console.log('[Firestore] Successfully seeded all local tables to cloud Firestore!');
-  } catch (err) {
-    console.error('[Firestore] Error seeding Firestore:', err);
-  }
-}
-
-// Trigger Firestore loading immediately
-syncFromFirestore();
 
 export function getDb(): DatabaseSchema {
   if (cachedDb) {
@@ -242,23 +140,6 @@ export function saveDb(data: DatabaseSchema): void {
   }
 }
 
-// Firestore Async Write Helpers
-async function firestoreSetDoc(collectionName: string, docId: string, data: any) {
-  try {
-    await setDoc(doc(firestore, collectionName, docId), data);
-  } catch (err) {
-    console.error(`[Firestore Error] Failed to write to Firestore: ${collectionName}/${docId}`, err);
-  }
-}
-
-async function firestoreDeleteDoc(collectionName: string, docId: string) {
-  try {
-    await deleteDoc(doc(firestore, collectionName, docId));
-  } catch (err) {
-    console.error(`[Firestore Error] Failed to delete from Firestore: ${collectionName}/${docId}`, err);
-  }
-}
-
 // Relational Operations
 export const db = {
   // Users
@@ -280,7 +161,6 @@ export const db = {
     const data = getDb();
     data.users.push(user);
     saveDb(data);
-    firestoreSetDoc('users', user.id, user);
     return user;
   },
 
@@ -290,7 +170,6 @@ export const db = {
     if (idx === -1) return null;
     data.users[idx] = { ...data.users[idx], ...updates };
     saveDb(data);
-    firestoreSetDoc('users', id, data.users[idx]);
     return data.users[idx];
   },
 
@@ -326,7 +205,6 @@ export const db = {
     const data = getDb();
     data.projects.unshift(project);
     saveDb(data);
-    firestoreSetDoc('projects', project.id, project);
     return project;
   },
 
@@ -343,7 +221,6 @@ export const db = {
     if (idx === -1) return null;
     data.projects[idx] = { ...data.projects[idx], ...updates, updatedAt: new Date().toISOString() };
     saveDb(data);
-    firestoreSetDoc('projects', data.projects[idx].id, data.projects[idx]);
     return data.projects[idx];
   },
 
@@ -359,23 +236,6 @@ export const db = {
     );
     if (!target) return false;
     const targetId = target.id;
-
-    // Delete in Firestore
-    firestoreDeleteDoc('projects', targetId);
-
-    // Cascade delete associated records in Firestore
-    const deploymentsToDelete = data.deployments.filter((d) => d.projectId === targetId || d.projectId === id);
-    for (const d of deploymentsToDelete) {
-      firestoreDeleteDoc('deployments', d.id);
-    }
-    const domainsToDelete = data.domains.filter((d) => d.projectId === targetId || d.projectId === id);
-    for (const dom of domainsToDelete) {
-      firestoreDeleteDoc('domains', dom.id);
-    }
-    const envsToDelete = data.environmentVariables.filter((e) => e.projectId === targetId || e.projectId === id);
-    for (const e of envsToDelete) {
-      firestoreDeleteDoc('environmentVariables', e.id);
-    }
 
     // Update Local Cache
     data.projects = data.projects.filter(
@@ -417,10 +277,8 @@ export const db = {
     if (pIdx !== -1) {
       data.projects[pIdx].currentDeploymentId = deployment.id;
       data.projects[pIdx].updatedAt = new Date().toISOString();
-      firestoreSetDoc('projects', data.projects[pIdx].id, data.projects[pIdx]);
     }
     saveDb(data);
-    firestoreSetDoc('deployments', deployment.id, deployment);
     return deployment;
   },
 
@@ -430,7 +288,6 @@ export const db = {
     if (idx === -1) return null;
     data.deployments[idx] = { ...data.deployments[idx], ...updates };
     saveDb(data);
-    firestoreSetDoc('deployments', id, data.deployments[idx]);
     return data.deployments[idx];
   },
 
@@ -441,7 +298,6 @@ export const db = {
       if (!data.deployments[idx].logs) data.deployments[idx].logs = [];
       data.deployments[idx].logs.push(logLine);
       saveDb(data);
-      firestoreSetDoc('deployments', id, data.deployments[idx]);
     }
   },
 
@@ -466,7 +322,6 @@ export const db = {
     const data = getDb();
     data.domains.push(domainRecord);
     saveDb(data);
-    firestoreSetDoc('domains', domainRecord.id, domainRecord);
     return domainRecord;
   },
 
@@ -476,7 +331,6 @@ export const db = {
     if (idx === -1) return null;
     data.domains[idx] = { ...data.domains[idx], ...updates, updatedAt: new Date().toISOString() };
     saveDb(data);
-    firestoreSetDoc('domains', id, data.domains[idx]);
     return data.domains[idx];
   },
 
@@ -485,7 +339,6 @@ export const db = {
     const initLen = data.domains.length;
     data.domains = data.domains.filter((d) => d.id !== id);
     saveDb(data);
-    firestoreDeleteDoc('domains', id);
     return data.domains.length < initLen;
   },
 
@@ -505,21 +358,16 @@ export const db = {
       data.environmentVariables.push(envVar);
     }
     saveDb(data);
-    firestoreSetDoc('environmentVariables', envVar.id, envVar);
     return envVar;
   },
 
   deleteEnvVar(projectId: string, key: string): boolean {
     const data = getDb();
-    const target = data.environmentVariables.find((e) => e.projectId === projectId && e.key === key);
     const initLen = data.environmentVariables.length;
     data.environmentVariables = data.environmentVariables.filter(
       (e) => !(e.projectId === projectId && e.key === key)
     );
     saveDb(data);
-    if (target) {
-      firestoreDeleteDoc('environmentVariables', target.id);
-    }
     return data.environmentVariables.length < initLen;
   },
 
@@ -533,14 +381,9 @@ export const db = {
     };
     data.auditLogs.unshift(newLog);
     if (data.auditLogs.length > 500) {
-      const oldLogs = data.auditLogs.slice(500);
-      for (const ol of oldLogs) {
-        firestoreDeleteDoc('auditLogs', ol.id);
-      }
       data.auditLogs = data.auditLogs.slice(0, 500);
     }
     saveDb(data);
-    firestoreSetDoc('auditLogs', newLog.id, newLog);
     return newLog;
   },
 
@@ -575,25 +418,19 @@ export const db = {
     const data = getDb();
     data.systemConfig = { ...data.systemConfig, ...updates };
     saveDb(data);
-    firestoreSetDoc('systemConfig', 'global', data.systemConfig);
     return data.systemConfig;
   },
 
   // Clear or Seed Database Async
   async clearAllCollections() {
-    try {
-      const collectionsToDelete = ['users', 'projects', 'deployments', 'domains', 'environmentVariables', 'auditLogs'];
-      for (const coll of collectionsToDelete) {
-        const snap = await getDocs(collection(firestore, coll));
-        for (const docItem of snap.docs) {
-          await deleteDoc(doc(firestore, coll, docItem.id));
-        }
-      }
-      await deleteDoc(doc(firestore, 'systemConfig', 'global'));
-      console.log('[Firestore] All Firestore collections cleared successfully.');
-    } catch (err) {
-      console.error('[Firestore] Error clearing Firestore database:', err);
-    }
+     const data = getDb();
+     data.projects = [];
+     data.deployments = [];
+     data.domains = [];
+     data.environmentVariables = [];
+     data.users = [];
+     data.auditLogs = [];
+     saveDb(data);
   },
 
   async resetDatabaseAndSync(preservedUsers: User[], resetLog: AuditLog) {
@@ -605,15 +442,5 @@ export const db = {
     data.users = preservedUsers;
     data.auditLogs = [resetLog];
     saveDb(data);
-
-    // Sync to Firestore
-    await this.clearAllCollections();
-    for (const u of preservedUsers) {
-      await setDoc(doc(firestore, 'users', u.id), u);
-    }
-    await setDoc(doc(firestore, 'auditLogs', resetLog.id), resetLog);
-    if (data.systemConfig) {
-      await setDoc(doc(firestore, 'systemConfig', 'global'), data.systemConfig);
-    }
   }
 };

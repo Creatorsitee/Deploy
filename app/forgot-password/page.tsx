@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { ArrowLeft, CheckCircle2, AlertCircle } from 'lucide-react';
+import { safeJson } from '@/lib/fetch-utils';
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('');
@@ -24,10 +25,10 @@ export default function ForgotPasswordPage() {
         body: JSON.stringify({ email, newPassword }),
       });
 
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || 'Failed to update password');
+      const data = await safeJson(res);
+      if (!res.ok) throw new Error(data?.error || 'Failed to update password');
 
-      setMessage(data.message || 'Password update instructions processed.');
+      setMessage(data?.message || 'Password update instructions processed.');
     } catch (err: any) {
       setError(err.message);
     } finally {

@@ -26,6 +26,7 @@ import {
   getServerUserSnapshot,
   ClientUser,
 } from '@/lib/auth/client';
+import { safeJson } from '@/lib/fetch-utils';
 
 interface DashboardLayoutProps {
   children: React.ReactNode;
@@ -74,7 +75,7 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
           }
           return null;
         }
-        return r.json();
+        return safeJson(r);
       })
       .then((d) => {
         if (!isMounted || !d) return;
