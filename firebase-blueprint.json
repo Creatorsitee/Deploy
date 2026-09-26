@@ -1,0 +1,144 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Platform user",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "passwordHash", "role", "createdAt"]
+    },
+    "Project": {
+      "title": "Project",
+      "description": "Deployment project",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "slug": { "type": "string" },
+        "userId": { "type": "string" },
+        "vercelProjectId": { "type": "string" },
+        "subdomain": { "type": "string" },
+        "customDomain": { "type": "string" },
+        "framework": { "type": "string" },
+        "githubRepo": { "type": "string" },
+        "status": { "type": "string" },
+        "outputDirectory": { "type": "string" },
+        "currentDeploymentId": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "name", "slug", "userId"]
+    },
+    "Deployment": {
+      "title": "Deployment",
+      "description": "Project deployment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "userId": { "type": "string" },
+        "vercelDeploymentId": { "type": "string" },
+        "url": { "type": "string" },
+        "status": { "type": "string" },
+        "logs": { "type": "array" },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "userId"]
+    },
+    "DomainRecord": {
+      "title": "DomainRecord",
+      "description": "Domain mapping",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "userId": { "type": "string" },
+        "domain": { "type": "string" },
+        "verified": { "type": "boolean" },
+        "verificationToken": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "userId", "domain", "verified"]
+    },
+    "EnvironmentVariable": {
+      "title": "EnvironmentVariable",
+      "description": "Env var for deployment",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "projectId": { "type": "string" },
+        "key": { "type": "string" },
+        "value": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "projectId", "key", "value"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Activity log",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "action": { "type": "string" },
+        "metadata": { "type": "object" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "userId", "userEmail", "action", "createdAt"]
+    },
+    "SystemConfig": {
+      "title": "SystemConfig",
+      "description": "Global settings",
+      "type": "object",
+      "properties": {
+        "vercelToken": { "type": "string" },
+        "vercelTeamId": { "type": "string" },
+        "baseDomain": { "type": "string" },
+        "availableDomains": { "type": "array" },
+        "allowPublicRegistration": { "type": "boolean" },
+        "maxProjectsPerUser": { "type": "number" },
+        "maxDeploymentsPerDay": { "type": "number" }
+      },
+      "required": ["vercelToken", "baseDomain"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Users of the platform"
+    },
+    "/projects/{projectId}": {
+      "schema": "Project",
+      "description": "Projects mapped by unique project ID"
+    },
+    "/deployments/{deploymentId}": {
+      "schema": "Deployment",
+      "description": "Deployments mapped by unique deployment ID"
+    },
+    "/domains/{domainId}": {
+      "schema": "DomainRecord",
+      "description": "Custom domains mapped by ID"
+    },
+    "/environmentVariables/{envVarId}": {
+      "schema": "EnvironmentVariable",
+      "description": "Env vars mapped by ID"
+    },
+    "/auditLogs/{logId}": {
+      "schema": "AuditLog",
+      "description": "System audit logs"
+    },
+    "/systemConfig/global": {
+      "schema": "SystemConfig",
+      "description": "Global singleton configuration"
+    }
+  }
+}
