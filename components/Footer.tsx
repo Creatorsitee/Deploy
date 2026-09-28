@@ -11,10 +11,10 @@ export default function Footer() {
               <div className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-white font-bold text-xs">
                 C
               </div>
-              <span className="font-bold text-neutral-950 text-sm tracking-tight">CMNTY Hosting</span>
+              <span className="font-bold text-neutral-950 text-sm tracking-tight">CMNTY Deploy</span>
             </div>
             <p className="text-xs text-neutral-500 leading-relaxed">
-              Free hosting. Simple deployment with automated custom subdomains and SSL certificates.
+              Free Deploy. Simple deployment with automated custom subdomains and SSL certificates.
             </p>
           </div>
 
@@ -66,7 +66,7 @@ export default function Footer() {
           <div>
             <h4 className="text-xs font-semibold text-neutral-900 uppercase tracking-wider mb-3">Platform</h4>
             <p className="text-xs text-neutral-500 leading-relaxed mb-3">
-              CMNTY Hosting provides seamless edge deployment with automated domain configuration.
+              CMNTY Deploy provides seamless edge deployment with automated domain configuration.
             </p>
             <div className="flex items-center gap-2 text-xs text-neutral-600">
               <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
@@ -76,7 +76,7 @@ export default function Footer() {
         </div>
 
         <div className="border-t border-neutral-100 pt-8 flex flex-col sm:flex-row items-center justify-between text-xs text-neutral-400 gap-4">
-          <p>© 2026 CMNTY Hosting. All rights reserved.</p>
+          <p>© 2026 CMNTY Deploy. All rights reserved.</p>
           <div className="flex items-center gap-4">
             <Link href="/docs" className="hover:text-neutral-600 transition">
               Terms of Service

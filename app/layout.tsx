@@ -3,18 +3,18 @@ import './globals.css'; // Global styles
 import Providers from '@/components/Providers';
 
 export const metadata: Metadata = {
-  title: 'CMNTY Hosting — Free Web Hosting & Simple Deployment',
-  description: 'Free hosting and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
+  title: 'CMNTY Deploy — Free Web Deploy & Simple Deployment',
+  description: 'Free Deploy and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
   keywords: [
-    'free hosting',
-    'web hosting',
+    'free Deploy',
+    'web Deploy',
     'simple deployment',
     'cloud edge api',
     'custom subdomains',
     'free ssl certificates',
-    'nextjs hosting',
-    'vite hosting',
-    'react hosting',
+    'nextjs Deploy',
+    'vite Deploy',
+    'react Deploy',
     'static web deployment'
   ],
   authors: [{ name: 'CMNTY' }],
@@ -23,16 +23,16 @@ export const metadata: Metadata = {
     canonical: 'https://cmnty.biz.id',
   },
   openGraph: {
-    title: 'CMNTY Hosting — Free Web Hosting & Simple Deployment',
-    description: 'Free hosting and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
+    title: 'CMNTY Deploy — Free Web Deploy & Simple Deployment',
+    description: 'Free Deploy and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
     type: 'website',
     url: 'https://cmnty.biz.id',
-    siteName: 'CMNTY Hosting',
+    siteName: 'CMNTY Deploy',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'CMNTY Hosting — Free Web Hosting & Simple Deployment',
-    description: 'Free hosting and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
+    title: 'CMNTY Deploy — Free Web Deploy & Simple Deployment',
+    description: 'Free Deploy and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
     creator: '@cmnty',
   },
 };
@@ -41,11 +41,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   const jsonLd = {
     '@context': 'https://schema.org',
     '@type': 'WebApplication',
-    'name': 'CMNTY Hosting',
+    'name': 'CMNTY Deploy',
     'url': 'https://cmnty.biz.id',
     'applicationCategory': 'DeveloperApplication',
     'operatingSystem': 'All',
-    'description': 'Free hosting and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
+    'description': 'Free Deploy and simple deployment platform powered by CMNTY Edge API. Deploy static and modern web apps instantly with automated custom subdomains and SSL certificates.',
     'offers': {
       '@type': 'Offer',
       'price': '0',

@@ -394,10 +394,42 @@ export default function ProjectDetailPage() {
 
   if (loading) {
     return (
-      <DashboardLayout>
-        <div className="py-24 text-center">
-          <RefreshCw className="w-6 h-6 animate-spin mx-auto text-neutral-400 mb-2" />
-          <span className="text-xs text-neutral-500 font-mono">Loading project data...</span>
+      <DashboardLayout breadcrumbs={[{ label: 'Projects', href: '/dashboard' }, { label: 'Loading...' }]}>
+        <div className="space-y-6">
+          {/* Project Header Skeleton */}
+          <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs animate-pulse space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="space-y-2">
+                <div className="h-6 bg-neutral-200 rounded w-48"></div>
+                <div className="h-4 bg-neutral-100 rounded w-64"></div>
+              </div>
+              <div className="flex gap-2">
+                <div className="h-9 bg-neutral-200 rounded-lg w-24"></div>
+                <div className="h-9 bg-neutral-950 rounded-lg w-28"></div>
+              </div>
+            </div>
+          </div>
+
+          {/* Quick Stats Grid Skeleton */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            {[1, 2, 3].map((i) => (
+              <div
+                key={i}
+                className="h-32 bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3"
+              >
+                <div className="h-4 bg-neutral-100 rounded w-1/3"></div>
+                <div className="h-6 bg-neutral-100 rounded w-2/3"></div>
+              </div>
+            ))}
+          </div>
+
+          {/* Main Card Skeleton */}
+          <div className="bg-white border border-neutral-200 rounded-xl p-6 animate-pulse space-y-4">
+            <div className="h-5 bg-neutral-200 rounded w-36"></div>
+            <div className="h-4 bg-neutral-100 rounded w-full"></div>
+            <div className="h-4 bg-neutral-100 rounded w-3/4"></div>
+            <div className="h-10 bg-neutral-100 rounded-lg mt-4"></div>
+          </div>
         </div>
       </DashboardLayout>
     );
@@ -413,15 +445,15 @@ export default function ProjectDetailPage() {
       <div className="space-y-6">
         {/* Project Header */}
         <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div className="space-y-1 min-w-0">
+          <div className="space-y-1 min-w-0 flex-1">
             <div className="flex items-center gap-3 flex-wrap">
-              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 truncate">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-neutral-950 break-words line-clamp-2">
                 {project.name}
               </h1>
               {latestDeployment && <DeploymentStatusBadge status={latestDeployment.status} />}
             </div>
-            <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono truncate">
-              <span>{project.slug}</span>
+            <div className="flex items-center gap-2 text-xs text-neutral-500 font-mono flex-wrap">
+              <span className="truncate max-w-[150px]">{project.slug}</span>
               <span>·</span>
               <span className="uppercase">{project.framework}</span>
               <span>·</span>
@@ -429,7 +461,7 @@ export default function ProjectDetailPage() {
                 href={prodUrl}
                 target="_blank"
                 rel="noreferrer"
-                className="text-neutral-900 font-semibold hover:underline flex items-center gap-1 truncate"
+                className="text-neutral-900 font-semibold hover:underline flex items-center gap-1 min-w-0"
               >
                 <span className="truncate">{project.subdomain}</span>
                 <ExternalLink className="w-3 h-3 shrink-0 opacity-50" />
@@ -641,13 +673,13 @@ export default function ProjectDetailPage() {
                         >
                           View Logs
                         </button>
-                        {d.url && (
+                        {d.productionUrl && (
                           <a
-                            href={d.url}
+                            href={d.productionUrl}
                             target="_blank"
                             rel="noreferrer"
                             className="text-neutral-500 hover:text-neutral-900"
-                            title="Open direct deployment URL"
+                            title="Open production URL"
                           >
                             <ExternalLink className="w-3.5 h-3.5 inline" />
                           </a>
@@ -904,11 +936,14 @@ export default function ProjectDetailPage() {
                     <span>Streaming build logs directly from cloud deployment edge...</span>
                   </div>
                 ) : selectedDeployment.logs && selectedDeployment.logs.length > 0 ? (
-                  selectedDeployment.logs.map((line: string, i: number) => (
-                    <div key={i} className="leading-relaxed whitespace-pre-wrap font-mono">
-                      {line}
-                    </div>
-                  ))
+                  selectedDeployment.logs.map((line: string, i: number) => {
+                    const cleanLine = line.replace(/https:\/\/[a-zA-Z0-9-]+\.vercel\.app/g, `https://${project?.subdomain || 'site.cmnty.biz.id'}`);
+                    return (
+                      <div key={i} className="leading-relaxed whitespace-pre-wrap font-mono">
+                        {cleanLine}
+                      </div>
+                    );
+                  })
                 ) : (
                   <div className="text-neutral-500 py-4">No build logs recorded from edge yet.</div>
                 )}

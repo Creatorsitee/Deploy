@@ -3,45 +3,7 @@ import { getCurrentUser } from '@/lib/auth/session';
 import { db } from '@/lib/db/store';
 import { getVercelConfig } from '@/lib/vercel/client';
 import { Project } from '@/lib/types';
-
-const RESERVED_SLUGS = new Set([
-  'www',
-  'app',
-  'api',
-  'apis',
-  'admin',
-  'panel',
-  'portal',
-  'dashboard',
-  'docs',
-  'mail',
-  'support',
-  'status',
-  'auth',
-  'login',
-  'register',
-  'config',
-  'settings',
-  'billing',
-  'staging',
-  'dev',
-  'cdn',
-  'static',
-  'assets',
-  'vercel',
-  'cmnty',
-  'root',
-  'system',
-  'cloud',
-  'host',
-  'dns',
-  'server',
-  'secure',
-  'shop',
-  'store',
-  'payment',
-  'pay',
-]);
+import { isSubdomainReserved } from '@/lib/validation';
 
 export async function GET() {
   const user = await getCurrentUser();
@@ -126,9 +88,9 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Project slug cannot exceed 40 characters' }, { status: 400 });
     }
 
-    if (RESERVED_SLUGS.has(rawSlug)) {
+    if (isSubdomainReserved(rawSlug)) {
       return NextResponse.json(
-        { error: `The subdomain "${rawSlug}" is a reserved system name. Please choose a different slug.` },
+        { error: `The subdomain "${rawSlug}" contains a reserved system pattern (like api-, -rest, etc.). Please choose a different slug.` },
         { status: 400 }
       );
     }

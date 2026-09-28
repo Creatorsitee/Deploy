@@ -1,6 +1,6 @@
 {
-  "name": "CMNTY Hosting",
-  "description": "Free hosting and simple deployment platform powered by CMNTY Edge API with automated custom subdomains and SSL certificates.",
+  "name": "CMNTY Deploy",
+  "description": "Free Deploy and simple deployment platform powered by CMNTY Edge API with automated custom subdomains and SSL certificates.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

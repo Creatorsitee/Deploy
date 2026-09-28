@@ -38,7 +38,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     const vercelConfig = getVercelConfig();
     if (!vercelConfig.isConfigured) {
       return NextResponse.json(
-        { error: 'Token Vercel belum dimasukkan di Admin Panel / Admin Settings. Silakan masukkan Token Vercel Anda di menu Admin terlebih dahulu sebelum melakukan hosting.' },
+        { error: 'Token Vercel belum dimasukkan di Admin Panel / Admin Settings. Silakan masukkan Token Vercel Anda di menu Admin terlebih dahulu sebelum melakukan Deploy.' },
         { status: 400 }
       );
     }

@@ -67,9 +67,7 @@ export async function GET() {
           subdomain: dbMatch?.subdomain || `${vp.name}.${config.baseDomain}`,
           latestDeploymentUrl: dbMatch?.subdomain
             ? `https://${dbMatch.subdomain}`
-            : vp.targets?.production?.url
-              ? `https://${vp.targets.production.url}`
-              : `https://${vp.name}.${config.baseDomain}`,
+            : `https://${vp.name}.${config.baseDomain}`,
           createdAt: new Date(vp.createdAt).toISOString(),
           updatedAt: new Date(vp.updatedAt || vp.createdAt).toISOString(),
           ownerEmail: owner?.email || 'Vercel API Account',

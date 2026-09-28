@@ -9,6 +9,49 @@ export interface FrameworkMeta {
   badgeBg: string;
 }
 
+export interface VercelFramework {
+  name: string;
+  slug: string | null;
+  demo: string;
+  logo: string;
+  tagline: string;
+  description: string;
+  website: string;
+  envVars?: string[];
+  useRuntime?: string;
+  ignore?: string[];
+  detectors?: {
+    every?: Array<{
+      path: string;
+      matchContent?: string;
+      exists?: boolean;
+    }>;
+    some?: Array<{
+      path: string;
+      matchContent?: string;
+      exists?: boolean;
+    }>;
+  };
+  settings: {
+    installCommand: {
+      placeholder: string;
+      value: string | null;
+    };
+    buildCommand: {
+      placeholder: string;
+      value: string | null;
+    };
+    devCommand: {
+      placeholder: string;
+      value: string | null;
+    };
+    outputDirectory: {
+      placeholder: string;
+      value: string | null;
+    };
+  };
+}
+
 export const VERCEL_FRAMEWORKS: Record<string, FrameworkMeta> = {
   nextjs: {
     name: 'Next.js',
@@ -212,15 +255,62 @@ export const VERCEL_FRAMEWORKS: Record<string, FrameworkMeta> = {
   },
 };
 
-/**
- * Normalizes framework string to Vercel API framework ID
- */
 export function getVercelFrameworkId(frameworkKey?: string | null): string | null {
   if (!frameworkKey) return null;
   const match = VERCEL_FRAMEWORKS[frameworkKey];
   if (match) return match.vercelId;
   if (frameworkKey === 'static' || frameworkKey === 'other') return null;
   return frameworkKey;
+}
+
+/**
+ * Detects framework from a list of files using official Vercel detector rules
+ */
+export function detectFrameworkFromVercelRules(
+  frameworks: VercelFramework[],
+  files: Array<{ path: string; content?: string }>
+): string | null {
+  const filePaths = new Set(files.map((f) => f.path.replace(/\\/g, '/')));
+
+  for (const fw of frameworks) {
+    if (!fw.detectors) continue;
+
+    const { every, some } = fw.detectors;
+
+    if (every && every.length > 0) {
+      const allMatch = every.every((d) => {
+        const normalizedPath = d.path.replace(/\\/g, '/');
+        const exists = filePaths.has(normalizedPath);
+        if (d.exists === false) return !exists;
+        if (!exists) return false;
+        if (d.matchContent) {
+          const file = files.find((f) => f.path.replace(/\\/g, '/') === normalizedPath);
+          if (!file || !file.content) return false;
+          return new RegExp(d.matchContent).test(file.content);
+        }
+        return true;
+      });
+      if (allMatch) return fw.slug;
+    }
+
+    if (some && some.length > 0) {
+      const anyMatch = some.some((d) => {
+        const normalizedPath = d.path.replace(/\\/g, '/');
+        const exists = filePaths.has(normalizedPath);
+        if (d.exists === false) return !exists;
+        if (!exists) return false;
+        if (d.matchContent) {
+          const file = files.find((f) => f.path.replace(/\\/g, '/') === normalizedPath);
+          if (!file || !file.content) return false;
+          return new RegExp(d.matchContent).test(file.content);
+        }
+        return true;
+      });
+      if (anyMatch) return fw.slug;
+    }
+  }
+
+  return null;
 }
 
 /**

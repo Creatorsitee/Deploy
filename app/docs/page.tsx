@@ -88,10 +88,10 @@ export default function DocsPage() {
             {/* 1. Overview */}
             <section id="overview" className="space-y-3">
               <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-neutral-950">
-                CMNTY Hosting Documentation
+                CMNTY Deploy Documentation
               </h1>
               <p className="text-neutral-600 leading-relaxed">
-                CMNTY Hosting provides free, zero-config web hosting powered by global edge cloud APIs. Every project gets an automatic custom subdomain (<code className="font-mono text-xs bg-neutral-100 px-1 py-0.5 rounded">project.{baseDomain}</code>) with automatic SSL certificates.
+                CMNTY Deploy provides free, zero-config web Deploy powered by global edge cloud APIs. Every project gets an automatic custom subdomain (<code className="font-mono text-xs bg-neutral-100 px-1 py-0.5 rounded">project.{baseDomain}</code>) with automatic SSL certificates.
               </p>
             </section>
 

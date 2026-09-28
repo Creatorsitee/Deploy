@@ -258,7 +258,7 @@ export async function executeDeployment(params: {
 
   db.createDeployment(initialDeployment);
 
-  // If Vercel API is not configured, deployment fails immediately. Simulated hosting has been completely removed.
+  // If Vercel API is not configured, deployment fails immediately. Simulated Deploy has been completely removed.
   if (!vercelConfig.isConfigured) {
     const duration = Date.now() - startTime;
     db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] [DEPLOYMENT ERROR] Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.`);

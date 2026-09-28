@@ -62,14 +62,14 @@ export default function LoginPage() {
             C
           </div>
           <span className="text-base font-bold tracking-tight text-neutral-950">
-            CMNTY Hosting
+            CMNTY Deploy
           </span>
         </Link>
         <h2 className="text-2xl font-bold tracking-tight text-neutral-950">
           Sign in to your dashboard
         </h2>
         <p className="mt-1 text-xs text-neutral-500">
-          Free hosting and simple deployments for your websites.
+          Free Deploy and simple deployments for your websites.
         </p>
       </div>
 

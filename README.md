@@ -1,7 +1,7 @@
-# CMNTY Hosting — High-Performance Cloud Edge Deployment Platform
+# CMNTY Deploy — High-Performance Cloud Edge Deployment Platform
 
-> **Free hosting. Simple instant deployment. Fully white-labeled developer ecosystem.**  
-> A modern, white-labeled, automated web hosting and serverless deployment platform. Offers instant ZIP and template-based deployments, automated custom subdomains (`*.cmnty.biz.id`), automated environment variable detection, SSL certificates, resource quotas, and an intuitive Admin Panel.
+> **Free Deploy. Simple instant deployment. Fully white-labeled developer ecosystem.**  
+> A modern, white-labeled, automated web Deploy and serverless deployment platform. Offers instant ZIP and template-based deployments, automated custom subdomains (`*.cmnty.biz.id`), automated environment variable detection, SSL certificates, resource quotas, and an intuitive Admin Panel.
 
 ---
 

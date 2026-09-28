@@ -1,6 +1,6 @@
 'use client';
 
-import React from 'react';
+import React, { Suspense } from 'react';
 import {
   CheckCircle2,
   AlertCircle,
@@ -9,6 +9,7 @@ import {
   X,
 } from 'lucide-react';
 import { ToastProvider, useToast } from '@/lib/contexts/ToastContext';
+import NavigationSkeleton from './NavigationSkeleton';
 
 function ToastContainer() {
   const { toasts, dismiss } = useToast();
@@ -118,6 +119,9 @@ function ConfirmModal() {
 export default function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ToastProvider>
+      <Suspense fallback={null}>
+        <NavigationSkeleton />
+      </Suspense>
       {children}
       <ToastContainer />
       <ConfirmModal />

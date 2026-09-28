@@ -41,55 +41,70 @@ export default function UsagePage() {
         </div>
 
         {/* Metrics Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          {/* Projects Quota */}
-          <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">
-                Active Projects
-              </span>
-              <Layers className="w-4 h-4 text-neutral-400" />
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-neutral-950 tabular-nums">
-                {projectsCount} <span className="text-neutral-400 text-base font-normal">/ 3</span>
+        {loading ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {[1, 2].map((i) => (
+              <div
+                key={i}
+                className="h-36 bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3"
+              >
+                <div className="h-4 bg-neutral-100 rounded w-1/3"></div>
+                <div className="h-6 bg-neutral-100 rounded w-1/2"></div>
+                <div className="h-2 bg-neutral-100 rounded-full mt-4"></div>
               </div>
-              <div className="w-full bg-neutral-100 rounded-full h-1.5 mt-3 overflow-hidden">
-                <div
-                  className="bg-neutral-950 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, (projectsCount / 3) * 100)}%` }}
-                ></div>
-              </div>
-              <div className="text-[11px] text-neutral-400 mt-2 font-mono">
-                {3 - projectsCount} projects remaining on free tier.
-              </div>
-            </div>
+            ))}
           </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            {/* Projects Quota */}
+            <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">
+                  Active Projects
+                </span>
+                <Layers className="w-4 h-4 text-neutral-400" />
+              </div>
+              <div>
+                <div className="text-3xl font-bold text-neutral-950 tabular-nums">
+                  {projectsCount} <span className="text-neutral-400 text-base font-normal">/ 3</span>
+                </div>
+                <div className="w-full bg-neutral-100 rounded-full h-1.5 mt-3 overflow-hidden">
+                  <div
+                    className="bg-neutral-950 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, (projectsCount / 3) * 100)}%` }}
+                  ></div>
+                </div>
+                <div className="text-[11px] text-neutral-400 mt-2 font-mono">
+                  {3 - projectsCount} projects remaining on free tier.
+                </div>
+              </div>
+            </div>
 
-          {/* Daily Deployments */}
-          <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs space-y-4">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">
-                Daily Builds
-              </span>
-              <Rocket className="w-4 h-4 text-emerald-600" />
-            </div>
-            <div>
-              <div className="text-3xl font-bold text-neutral-950 tabular-nums">
-                {deploymentsCount} <span className="text-neutral-400 text-base font-normal">/ 10</span>
+            {/* Daily Deployments */}
+            <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs space-y-4">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-medium uppercase tracking-wider text-neutral-400">
+                  Daily Builds
+                </span>
+                <Rocket className="w-4 h-4 text-emerald-600" />
               </div>
-              <div className="w-full bg-neutral-100 rounded-full h-1.5 mt-3 overflow-hidden">
-                <div
-                  className="bg-emerald-600 h-full rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(100, (deploymentsCount / 10) * 100)}%` }}
-                ></div>
-              </div>
-              <div className="text-[11px] text-neutral-400 mt-2 font-mono">
-                Resets daily at 00:00 UTC.
+              <div>
+                <div className="text-3xl font-bold text-neutral-950 tabular-nums">
+                  {deploymentsCount} <span className="text-neutral-400 text-base font-normal">/ 10</span>
+                </div>
+                <div className="w-full bg-neutral-100 rounded-full h-1.5 mt-3 overflow-hidden">
+                  <div
+                    className="bg-emerald-600 h-full rounded-full transition-all duration-500"
+                    style={{ width: `${Math.min(100, (deploymentsCount / 10) * 100)}%` }}
+                  ></div>
+                </div>
+                <div className="text-[11px] text-neutral-400 mt-2 font-mono">
+                  Resets daily at 00:00 UTC.
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
 
         {/* Minimal Quota Details */}
         <div className="bg-white border border-neutral-200/80 rounded-xl p-5 sm:p-6 shadow-2xs space-y-3">

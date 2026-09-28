@@ -13,7 +13,9 @@ import {
   detectEnvFromZip,
   parseEnvString,
   detectRecommendedEnvForFramework,
+  detectFrameworkFromGithub,
 } from '@/lib/env-detector';
+import { isSubdomainReserved } from '@/lib/validation';
 import {
   UploadCloud,
   FileArchive,
@@ -63,6 +65,7 @@ export default function NewProjectPage() {
   const [availableDomains, setAvailableDomains] = useState<string[]>(['cmnty.biz.id']);
   const [selectedDomain, setSelectedDomain] = useState<string>('cmnty.biz.id');
   const [isVercelConfigured, setIsVercelConfigured] = useState<boolean>(true);
+  const [vercelFrameworks, setVercelFrameworks] = useState<any[]>([]);
 
   // Step 2: Source Code
   const [sourceType, setSourceType] = useState<'upload' | 'git'>('upload');
@@ -94,7 +97,7 @@ export default function NewProjectPage() {
 
       if (sourceType === 'upload' && uploadedFile) {
         if (uploadedFile.name.endsWith('.zip')) {
-          const detection = await detectEnvFromZip(uploadedFile);
+          const detection = await detectEnvFromZip(uploadedFile, vercelFrameworks);
           foundVars = detection.variables;
           summaryText = detection.summary;
           if (detection.detectedFramework) {
@@ -155,6 +158,9 @@ export default function NewProjectPage() {
   const [errorMessage, setErrorMessage] = useState('');
   const [createdProjectId, setCreatedProjectId] = useState<string | null>(null);
   const [finalUrl, setFinalUrl] = useState<string | null>(null);
+  const [isSuccessfullyDeployed, setIsSuccessfullyDeployed] = useState(false);
+  const [deploymentCountdown, setDeploymentCountdown] = useState<number>(30);
+  const [deploymentStatusText, setDeploymentStatusText] = useState<string>('Initializing final verification...');
 
   // Success Celebration Popup Modal State
   const [showSuccessModal, setShowSuccessModal] = useState(false);
@@ -208,6 +214,21 @@ export default function NewProjectPage() {
       }
     }
     loadConfig();
+
+    async function loadVercelFrameworks() {
+      try {
+        const res = await authFetch('/api/frameworks');
+        if (res.ok) {
+          const data = await safeJson(res);
+          if (data && Array.isArray(data.frameworks)) {
+            setVercelFrameworks(data.frameworks);
+          }
+        }
+      } catch (e) {
+        console.error('Failed to load Vercel frameworks:', e);
+      }
+    }
+    loadVercelFrameworks();
   }, []);
 
   // Auto-slug generator
@@ -425,11 +446,38 @@ export default function NewProjectPage() {
       setDeployStepIndex(4);
       const productionUrl = deployment.productionUrl || `https://${projectSlug}.${selectedDomain}`;
       setFinalUrl(productionUrl);
+      setIsSuccessfullyDeployed(true);
 
-      // Automatically open the success popup modal!
-      setTimeout(() => {
-        setShowSuccessModal(true);
-      }, 500);
+      // AS REQUESTED: Wait 30 seconds before showing the success popup notification
+      // We implement a countdown and more status messages for better UX
+      const statusMessages = [
+        'Propagating global edge routing...',
+        'Validating SSL certificate issuance...',
+        'Synchronizing production environment variables...',
+        'Warming up serverless execution cache...',
+        'Finalizing CDN caching layers...',
+        'Verifying production URL accessibility...',
+        'Almost ready! Generating project preview...',
+      ];
+
+      for (let i = 30; i > 0; i--) {
+        setDeploymentCountdown(i);
+        
+        // Change text every few seconds
+        if (i > 25) setDeploymentStatusText(statusMessages[0]);
+        else if (i > 20) setDeploymentStatusText(statusMessages[1]);
+        else if (i > 15) setDeploymentStatusText(statusMessages[2]);
+        else if (i > 10) setDeploymentStatusText(statusMessages[3]);
+        else if (i > 5) setDeploymentStatusText(statusMessages[4]);
+        else if (i > 2) setDeploymentStatusText(statusMessages[5]);
+        else setDeploymentStatusText(statusMessages[6]);
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+      setDeploymentCountdown(0);
+      setDeploymentStatusText('Deployment verified! Opening dashboard...');
+
+      setShowSuccessModal(true);
     } catch (err: any) {
       setErrorMessage(err.message || 'Deployment error occurred');
       setDeployStepIndex(-1);
@@ -478,14 +526,14 @@ export default function NewProjectPage() {
               >
                 <div
                   className={`w-8 h-8 sm:w-9 sm:h-9 rounded-full flex items-center justify-center text-xs sm:text-sm font-mono font-bold transition shrink-0 ${
-                    step === s.num
-                      ? 'bg-neutral-950 text-white shadow-sm ring-2 ring-neutral-950 ring-offset-2'
-                      : step > s.num
+                    (step > s.num || (s.num === 4 && isSuccessfullyDeployed))
                       ? 'bg-emerald-600 text-white'
+                      : step === s.num
+                      ? 'bg-neutral-950 text-white shadow-sm ring-2 ring-neutral-950 ring-offset-2'
                       : 'bg-neutral-100 text-neutral-500 border border-neutral-300'
                   }`}
                 >
-                  {step > s.num ? '✓' : s.num}
+                  {(step > s.num || (s.num === 4 && isSuccessfullyDeployed)) ? '✓' : s.num}
                 </div>
                 <span
                   className={`hidden sm:inline text-xs font-semibold ${
@@ -502,7 +550,7 @@ export default function NewProjectPage() {
 
               {idx < 3 && (
                 <div
-                  className={`h-1.5 sm:h-2 w-10 sm:w-16 md:w-24 rounded-full transition-colors ${
+                  className={`h-1 sm:h-2 w-4 sm:w-16 md:w-24 rounded-full transition-colors ${
                     step > s.num ? 'bg-neutral-950' : 'bg-neutral-300'
                   }`}
                   aria-hidden="true"
@@ -594,18 +642,19 @@ export default function NewProjectPage() {
                     </select>
                   </div>
                 </div>
-
-                <div className="flex items-center gap-2 mt-2 text-[11px] text-neutral-500">
-                  <span>Target URL:</span>
-                  <span className="font-mono font-semibold text-neutral-900 break-all">{fullSubdomainPreview}</span>
-                </div>
+                {projectSlug.length >= 3 && isSubdomainReserved(projectSlug) && (
+                  <div className="mt-2 p-2 bg-rose-50 border border-rose-100 rounded text-[10px] text-rose-600 font-medium flex items-center gap-1.5 animate-in fade-in slide-in-from-top-1">
+                    <AlertCircle className="w-3 h-3" />
+                    <span>The subdomain &quot;{projectSlug}&quot; is reserved for system use and cannot be used.</span>
+                  </div>
+                )}
               </div>
             </div>
 
             <div className="pt-4 border-t border-neutral-100 flex justify-end">
               <button
                 type="button"
-                disabled={isLimitReached || !projectName.trim() || !projectSlug.trim() || projectSlug.length < 3}
+                disabled={isLimitReached || !projectName.trim() || !projectSlug.trim() || projectSlug.length < 3 || isSubdomainReserved(projectSlug)}
                 onClick={() => setStep(2)}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
@@ -736,13 +785,37 @@ export default function NewProjectPage() {
               <button
                 type="button"
                 disabled={sourceType === 'upload' && !uploadedFile}
-                onClick={() => {
+                onClick={async () => {
+                  if (sourceType === 'git' && gitUrl.includes('github.com')) {
+                    setDetectingEnv(true);
+                    const fw = await detectFrameworkFromGithub(gitUrl, vercelFrameworks);
+                    if (fw) {
+                      setFramework(fw);
+                      
+                      // Check vercel frameworks first for settings
+                      const vFw = vercelFrameworks.find(f => f.slug === fw);
+                      if (vFw) {
+                        setBuildCommand(vFw.settings.buildCommand.value || '');
+                        setOutputDirectory(vFw.settings.outputDirectory.value || '');
+                        setInstallCommand(vFw.settings.installCommand.value || '');
+                      } else {
+                        const preset = VERCEL_FRAMEWORKS[fw];
+                        if (preset) {
+                          setBuildCommand(preset.defaultBuild);
+                          setOutputDirectory(preset.defaultOutput);
+                          setInstallCommand(preset.defaultInstall);
+                        }
+                      }
+                      toast.info(`Auto-detected ${fw.toUpperCase()} framework from GitHub repository.`);
+                    }
+                    setDetectingEnv(false);
+                  }
                   setStep(3);
                   handleAutoDetectEnv();
                 }}
                 className="inline-flex items-center gap-1.5 px-5 py-2.5 bg-neutral-950 text-white text-xs font-semibold rounded-lg hover:bg-neutral-800 transition active:scale-98 disabled:opacity-40"
               >
-                <span>Continue to Build & Env</span>
+                <span>{detectingEnv ? 'Detecting Framework...' : 'Continue to Build & Env'}</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -775,6 +848,16 @@ export default function NewProjectPage() {
                       onChange={(e) => {
                         const newFw = e.target.value;
                         setFramework(newFw);
+                        
+                        // Check vercel frameworks first
+                        const vFw = vercelFrameworks.find(f => f.slug === newFw);
+                        if (vFw) {
+                          setBuildCommand(vFw.settings.buildCommand.value || '');
+                          setOutputDirectory(vFw.settings.outputDirectory.value || '');
+                          setInstallCommand(vFw.settings.installCommand.value || '');
+                          return;
+                        }
+
                         const preset = VERCEL_FRAMEWORKS[newFw];
                         if (preset) {
                           setBuildCommand(preset.defaultBuild);
@@ -784,11 +867,22 @@ export default function NewProjectPage() {
                       }}
                       className="w-full py-1.5 bg-transparent text-xs font-bold text-neutral-900 focus:outline-none cursor-pointer"
                     >
-                      {Object.entries(VERCEL_FRAMEWORKS).map(([key, info]) => (
-                        <option key={key} value={key}>
-                          {info.name}
-                        </option>
-                      ))}
+                      <optgroup label="Core Presets">
+                        {Object.entries(VERCEL_FRAMEWORKS).map(([key, info]) => (
+                          <option key={key} value={key}>
+                            {info.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                      {vercelFrameworks.length > 0 && (
+                        <optgroup label="Official Vercel Frameworks">
+                          {vercelFrameworks.map((f) => (
+                            <option key={f.slug} value={f.slug || 'other'}>
+                              {f.name}
+                            </option>
+                          ))}
+                        </optgroup>
+                      )}
                     </select>
                   </div>
                 </div>
@@ -1045,43 +1139,56 @@ export default function NewProjectPage() {
                 </div>
 
                 <div className="space-y-3 pt-1">
-                   {[
-                     { idx: 1, title: 'Validating Project & Environment Configuration' },
-                     { idx: 2, title: 'Transmitting Source Files to Cloud Engine' },
-                     { idx: 3, title: `Binding Edge Subdomain (*.${selectedDomain}) & SSL Certificate` },
-                     { idx: 4, title: 'Finalizing Live Edge Routing' },
-                   ].map((st) => (
-                    <div key={st.idx} className="flex items-center gap-3 text-xs">
-                      {deployStepIndex > st.idx ? (
-                        <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                      ) : deployStepIndex === st.idx ? (
-                        <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
-                      ) : (
-                        <div className="w-4 h-4 rounded-full border border-neutral-700 shrink-0" />
-                      )}
-                      <span
-                        className={`${
-                          deployStepIndex >= st.idx ? 'text-neutral-200 font-medium' : 'text-neutral-600'
-                        }`}
-                      >
-                        {st.title}
-                      </span>
-                    </div>
-                  ))}
+                    {[
+                      { idx: 1, title: 'Validating Project & Environment Configuration' },
+                      { idx: 2, title: 'Transmitting Source Files to Cloud Engine' },
+                      { idx: 3, title: `Binding Edge Subdomain (*.${selectedDomain}) & SSL Certificate` },
+                      { idx: 4, title: 'Finalizing Live Edge Routing' },
+                    ].map((st) => {
+                      const isDone = deployStepIndex > st.idx || (st.idx === 4 && isSuccessfullyDeployed && deploymentCountdown === 0);
+                      const isWaiting = st.idx === 4 && isSuccessfullyDeployed && deploymentCountdown > 0;
+                      const isActive = !isDone && !isWaiting && deployStepIndex === st.idx;
+                      
+                      return (
+                        <div key={st.idx} className="flex items-center gap-3 text-xs">
+                          {isDone ? (
+                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                          ) : (isActive || isWaiting) ? (
+                            <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
+                          ) : (
+                            <div className="w-4 h-4 rounded-full border border-neutral-700 shrink-0" />
+                          )}
+                          <span
+                            className={`${
+                              (isDone || isActive || isWaiting) ? 'text-neutral-200 font-medium' : 'text-neutral-600'
+                            } flex items-center gap-2`}
+                          >
+                            {st.title}
+                            {isWaiting && (
+                              <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-bold">
+                                {deploymentStatusText}
+                              </span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
                 </div>
               </div>
             )}
 
             <div className="pt-4 border-t border-neutral-100 flex justify-between">
-              <button
-                type="button"
-                disabled={deploying}
-                onClick={() => setStep(3)}
-                className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition disabled:opacity-40"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Back</span>
-              </button>
+              {!isSuccessfullyDeployed && (
+                <button
+                  type="button"
+                  disabled={deploying}
+                  onClick={() => setStep(3)}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 text-xs font-semibold text-neutral-600 hover:text-neutral-950 transition disabled:opacity-40"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5" />
+                  <span>Back</span>
+                </button>
+              )}
 
               {!finalUrl ? (
                 <button
@@ -1190,18 +1297,10 @@ export default function NewProjectPage() {
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   key={iframeKey}
-                  src={`https://api.cmnty.eu.cc/tools/ssweb?url=${encodeURIComponent(
-                    finalUrl
-                  )}&device=desktop&theme=light&fullPage=false&apikey=oji-10081`}
+                  src={`https://image.thum.io/get/${finalUrl}`}
                   alt={`Screenshot of ${finalUrl}`}
                   className="w-full h-auto max-h-[360px] object-cover object-top"
                   loading="eager"
-                  onError={(e) => {
-                    const target = e.currentTarget;
-                    if (!target.src.includes('mshots')) {
-                      target.src = `https://s0.wp.com/mshots/v1/${encodeURIComponent(finalUrl)}?w=1200`;
-                    }
-                  }}
                 />
               </div>
 

@@ -93,9 +93,17 @@ export default function ProjectsDirectoryPage() {
 
         {/* Content */}
         {loading ? (
-          <div className="bg-white border border-neutral-200 rounded-xl p-8 text-center text-xs text-neutral-400">
-            <RefreshCw className="w-5 h-5 animate-spin mx-auto text-neutral-400 mb-2" />
-            <span>Loading projects...</span>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map((i) => (
+              <div
+                key={i}
+                className="h-36 bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3"
+              >
+                <div className="h-4 bg-neutral-100 rounded w-1/3"></div>
+                <div className="h-3 bg-neutral-100 rounded w-2/3"></div>
+                <div className="h-6 bg-neutral-100 rounded mt-4"></div>
+              </div>
+            ))}
           </div>
         ) : filtered.length === 0 ? (
           <div className="bg-white border border-neutral-200 rounded-xl p-8 sm:p-12 text-center space-y-3 shadow-2xs">

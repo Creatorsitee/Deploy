@@ -43,7 +43,7 @@ export default function HomePage() {
             </h1>
 
             <p className="text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed">
-              Simple, high-performance web hosting powered by CMNTY Edge API. Deploy static sites, single HTML files, and modern web applications with automated subdomains and SSL certificates.
+              Simple, high-performance web Deploy powered by CMNTY Edge API. Deploy static sites, single HTML files, and modern web applications with automated subdomains and SSL certificates.
             </p>
 
             {/* Direct CTAs */}
@@ -174,7 +174,7 @@ export default function HomePage() {
         <section className="py-16 sm:py-20 bg-neutral-950 text-white">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-5">
             <h2 className="text-2xl sm:text-4xl font-bold tracking-tight">
-              Start hosting your website today.
+              Start Deploy your website today.
             </h2>
             <p className="text-neutral-400 text-sm max-w-lg mx-auto leading-relaxed">
               No credit card required. Free tier for personal portfolios, web tools, and community applications.

@@ -39,7 +39,7 @@ export default function Navbar() {
               C
             </div>
             <span className="text-base font-bold tracking-tight text-neutral-950">
-              CMNTY Hosting
+              CMNTY Deploy
             </span>
           </Link>
 

@@ -113,15 +113,30 @@ export async function authFetch(input: RequestInfo | URL, init?: RequestInit): P
     credentials: 'include',
   };
 
-  const response = await fetch(input, enhancedInit);
+  try {
+    const response = await fetch(input, enhancedInit);
 
-  // If token is invalid/expired (401), automatically clear stale local session
-  if (response.status === 401 && typeof window !== 'undefined') {
-    const urlStr = typeof input === 'string' ? input : input.toString();
-    if (urlStr.startsWith('/api/') && !urlStr.includes('/api/auth/login')) {
-      clearAuthSession();
+    // If token is invalid/expired (401), automatically clear stale local session
+    if (response.status === 401 && typeof window !== 'undefined') {
+      const urlStr = typeof input === 'string' ? input : input.toString();
+      if (urlStr.startsWith('/api/') && !urlStr.includes('/api/auth/login')) {
+        clearAuthSession();
+      }
     }
-  }
 
-  return response;
+    return response;
+  } catch (netErr: any) {
+    console.warn('Network request failed in authFetch:', input, netErr);
+    // Return a safe synthetic 503 error response rather than crashing with unhandled rejection
+    return new Response(
+      JSON.stringify({
+        error: 'Network connection issue. Please check your connection and retry.',
+        code: 'NETWORK_ERROR',
+      }),
+      {
+        status: 503,
+        headers: { 'Content-Type': 'application/json' },
+      }
+    );
+  }
 }

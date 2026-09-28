@@ -50,7 +50,7 @@ function createInitialDatabase(): DatabaseSchema {
         userId: 'system',
         userEmail: 'system@cmnty.local',
         action: 'SYSTEM_BOOT',
-        metadata: { version: '1.0.0', platform: 'CMNTY Hosting' },
+        metadata: { version: '1.0.0', platform: 'CMNTY Deploy' },
         createdAt: now,
       },
     ],

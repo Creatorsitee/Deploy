@@ -417,28 +417,20 @@ export default function AdminDashboardPage() {
           </div>
         </div>
 
-        {!diagnostics?.authenticated && (
-          <div className="bg-rose-50 border border-rose-200 rounded-xl p-4 flex items-start gap-3">
-            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
-            <div>
-              <h3 className="text-xs font-bold text-rose-950">PERINGATAN: Token Vercel Belum Dikonfigurasi!</h3>
-              <p className="text-[11px] text-rose-700 mt-0.5">
-                Sistem tidak dapat terhubung ke API Vercel. Untuk meng-hosting project, menghapus, atau melihat daftar hosted projects yang sebenarnya, silakan masukkan Token Vercel Anda terlebih dahulu pada tab <strong>&quot;Credentials &amp; Settings&quot;</strong> di bawah.
-              </p>
-            </div>
-          </div>
-        )}
-
         {/* System Stats Summary Grid */}
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
           <div className="bg-white border border-neutral-200/80 rounded-xl p-4 sm:p-5 shadow-2xs">
             <div className="flex items-center justify-between text-neutral-400">
               <span className="text-[11px] font-semibold uppercase tracking-wider">Total Users</span>
               <Users className="w-4 h-4" />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
-              {stats?.totalUsers ?? '—'}
-            </div>
+            {loading ? (
+              <div className="h-8 bg-neutral-100 rounded w-16 animate-pulse mt-2"></div>
+            ) : (
+              <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
+                {stats?.totalUsers ?? '—'}
+              </div>
+            )}
             <div className="text-[11px] text-neutral-400 mt-1">Registered platform accounts</div>
           </div>
 
@@ -447,9 +439,13 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] font-semibold uppercase tracking-wider">Active Projects</span>
               <Server className="w-4 h-4" />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
-              {stats?.totalProjects ?? '—'}
-            </div>
+            {loading ? (
+              <div className="h-8 bg-neutral-100 rounded w-16 animate-pulse mt-2"></div>
+            ) : (
+              <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
+                {stats?.totalProjects ?? '—'}
+              </div>
+            )}
             <div className="text-[11px] text-neutral-400 mt-1">Deployments active</div>
           </div>
 
@@ -458,9 +454,13 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] font-semibold uppercase tracking-wider">Deployments</span>
               <Activity className="w-4 h-4" />
             </div>
-            <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
-              {stats?.totalDeployments ?? '—'}
-            </div>
+            {loading ? (
+              <div className="h-8 bg-neutral-100 rounded w-16 animate-pulse mt-2"></div>
+            ) : (
+              <div className="text-2xl sm:text-3xl font-bold text-neutral-950 mt-2 tabular-nums">
+                {stats?.totalDeployments ?? '—'}
+              </div>
+            )}
             <div className="text-[11px] text-neutral-400 mt-1">Build runs recorded</div>
           </div>
 
@@ -469,16 +469,20 @@ export default function AdminDashboardPage() {
               <span className="text-[11px] font-semibold uppercase tracking-wider">Infrastructure</span>
               <Server className="w-4 h-4" />
             </div>
-            <div className="flex items-center gap-2 mt-2">
-              <span
-                className={`w-2.5 h-2.5 rounded-full ${
-                  diagnostics?.authenticated ? 'bg-emerald-500' : 'bg-amber-500'
-                }`}
-              />
-              <span className="text-base sm:text-lg font-bold text-neutral-950 truncate">
-                {diagnostics?.authenticated ? 'Connected' : 'Token Needed'}
-              </span>
-            </div>
+            {loading ? (
+              <div className="h-8 bg-neutral-100 rounded w-24 animate-pulse mt-2"></div>
+            ) : (
+              <div className="flex items-center gap-2 mt-2">
+                <span
+                  className={`w-2.5 h-2.5 rounded-full ${
+                    diagnostics?.authenticated ? 'bg-emerald-500' : 'bg-amber-500'
+                  }`}
+                />
+                <span className="text-base sm:text-lg font-bold text-neutral-950 truncate">
+                  {diagnostics?.authenticated ? 'Connected' : 'Token Needed'}
+                </span>
+              </div>
+            )}
             <div className="text-[11px] text-neutral-400 mt-1">
               {diagnostics?.latencyMs ? `${diagnostics.latencyMs}ms API response` : 'REST API Ready'}
             </div>
@@ -556,7 +560,15 @@ export default function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {filteredUsers.map((u: any) => (
+                  {loading ? (
+                    [1, 2, 3, 4].map((i) => (
+                      <tr key={i}>
+                        <td colSpan={5} className="px-4 py-4">
+                          <div className="h-6 bg-neutral-100 rounded animate-pulse w-full"></div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : filteredUsers.map((u: any) => (
                     <tr key={u.id} className="hover:bg-neutral-50/50">
                       <td className="px-4 py-3.5">
                         <div className="font-bold text-neutral-950">{u.name}</div>
@@ -596,7 +608,7 @@ export default function AdminDashboardPage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredUsers.length === 0 && (
+                  {!loading && filteredUsers.length === 0 && (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-neutral-400">
                         No users found matching search.
@@ -644,7 +656,15 @@ export default function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
-                  {filteredProjects.map((p: any) => (
+                  {loading ? (
+                    [1, 2, 3, 4].map((i) => (
+                      <tr key={i}>
+                        <td colSpan={6} className="px-4 py-4">
+                          <div className="h-6 bg-neutral-100 rounded animate-pulse w-full"></div>
+                        </td>
+                      </tr>
+                    ))
+                  ) : filteredProjects.map((p: any) => (
                     <tr key={p.id} className="hover:bg-neutral-50/50">
                       <td className="px-4 py-3.5">
                         <div className="font-bold text-neutral-950 flex items-center gap-1.5">
@@ -684,7 +704,13 @@ export default function AdminDashboardPage() {
                           {p.status || 'ACTIVE'}
                         </span>
                       </td>
-                      <td className="px-4 py-3.5 text-right space-x-3">
+                      <td className="px-4 py-3.5 text-right space-x-3 flex items-center justify-end">
+                        <Link
+                          href={`/dashboard/projects/${p.dbId || p.id}`}
+                          className="text-xs font-semibold text-neutral-950 hover:underline"
+                        >
+                          Manage
+                        </Link>
                         <button
                           type="button"
                           onClick={() => handleToggleSuspend(p.id)}
@@ -705,7 +731,7 @@ export default function AdminDashboardPage() {
                       </td>
                     </tr>
                   ))}
-                  {filteredProjects.length === 0 && (
+                  {!loading && filteredProjects.length === 0 && (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-neutral-400">
                         No projects found matching search.

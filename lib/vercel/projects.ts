@@ -1,7 +1,14 @@
 import { vercelFetch } from './client';
-import { VERCEL_FRAMEWORKS, getVercelFrameworkId } from './frameworks';
+import { VERCEL_FRAMEWORKS, getVercelFrameworkId, VercelFramework } from './frameworks';
 
 export { VERCEL_FRAMEWORKS, getVercelFrameworkId };
+
+/**
+ * Fetches the list of all supported frameworks from Vercel API
+ */
+export async function listVercelFrameworks() {
+  return vercelFetch<{ frameworks: VercelFramework[] }>('/v1/frameworks');
+}
 
 export interface VercelProjectConfig {
   name: string;

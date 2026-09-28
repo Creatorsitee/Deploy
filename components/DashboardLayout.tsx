@@ -131,10 +131,63 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-neutral-900 animate-pulse"></div>
-          <span className="text-xs text-neutral-500 font-mono">Loading CMNTY workspace...</span>
+      <div className="min-h-screen bg-[#fafafa] flex flex-col md:flex-row text-neutral-900">
+        {/* Sidebar Skeleton */}
+        <aside className="hidden md:flex flex-col w-64 border-r border-neutral-200 bg-white shrink-0">
+          <div className="p-6 border-b border-neutral-100 flex items-center gap-2.5">
+            <div className="w-8 h-8 rounded-lg bg-neutral-200 animate-pulse shrink-0"></div>
+            <div>
+              <div className="h-4 bg-neutral-200 rounded w-20 animate-pulse"></div>
+              <div className="h-3 bg-neutral-100 rounded w-16 animate-pulse mt-1"></div>
+            </div>
+          </div>
+          <nav className="p-4 space-y-2 flex-1">
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="h-9 bg-neutral-100 rounded-lg animate-pulse"></div>
+            ))}
+          </nav>
+          <div className="p-4 border-t border-neutral-100 bg-neutral-50/50">
+            <div className="h-4 bg-neutral-200 rounded w-2/3 animate-pulse"></div>
+          </div>
+        </aside>
+
+        {/* Main Content Skeleton (Matches Overview Page Loading Style) */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="h-14 sm:h-16 bg-white border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
+            <div className="h-4 bg-neutral-200 rounded w-32 animate-pulse"></div>
+            <div className="h-8 bg-neutral-200 rounded-lg w-28 animate-pulse"></div>
+          </header>
+          <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6">
+            <div className="border-b border-neutral-200/80 pb-5 space-y-2">
+              <div className="h-7 bg-neutral-200 rounded w-48 animate-pulse"></div>
+              <div className="h-3 bg-neutral-100 rounded w-72 animate-pulse"></div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div className="bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3">
+                <div className="h-4 bg-neutral-100 rounded w-1/4"></div>
+                <div className="h-8 bg-neutral-100 rounded w-1/3"></div>
+              </div>
+              <div className="bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3">
+                <div className="h-4 bg-neutral-100 rounded w-1/4"></div>
+                <div className="h-8 bg-neutral-100 rounded w-1/3"></div>
+              </div>
+            </div>
+            <div className="space-y-4 pt-2">
+              <div className="h-5 bg-neutral-200 rounded w-32 animate-pulse"></div>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {[1, 2, 3].map((i) => (
+                  <div
+                    key={i}
+                    className="h-36 bg-white border border-neutral-200 rounded-xl p-5 animate-pulse space-y-3"
+                  >
+                    <div className="h-4 bg-neutral-100 rounded w-1/3"></div>
+                    <div className="h-3 bg-neutral-100 rounded w-2/3"></div>
+                    <div className="h-6 bg-neutral-100 rounded mt-4"></div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </main>
         </div>
       </div>
     );
@@ -151,7 +204,7 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
             </div>
             <div className="min-w-0">
               <div className="text-sm font-bold text-neutral-950 tracking-tight truncate">CMNTY</div>
-              <div className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold truncate">Hosting Platform</div>
+              <div className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold truncate">Deploy Platform</div>
             </div>
           </Link>
         </div>
@@ -160,7 +213,9 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
         <nav className="p-4 space-y-1 flex-1">
           {navItems.map((item) => {
             const Icon = item.icon;
-            const isActive = pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href !== '/docs');
+            const isActive = item.href === '/' 
+              ? pathname === '/' 
+              : pathname === item.href || (item.href !== '/dashboard' && pathname.startsWith(item.href) && item.href !== '/docs');
             return (
               <Link
                 key={item.href}

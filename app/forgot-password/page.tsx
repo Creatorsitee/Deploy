@@ -44,7 +44,7 @@ export default function ForgotPasswordPage() {
             C
           </div>
           <span className="text-base font-bold tracking-tight text-neutral-950">
-            CMNTY Hosting
+            CMNTY Deploy
           </span>
         </Link>
         <h2 className="text-2xl font-bold tracking-tight text-neutral-950">

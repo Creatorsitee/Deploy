@@ -1,5 +1,7 @@
 import JSZip from 'jszip';
 
+import { VercelFramework } from './vercel/frameworks';
+
 export interface DetectedEnvVar {
   key: string;
   value: string;
@@ -92,10 +94,21 @@ export function serializeEnv(vars: { key: string; value: string }[]): string {
 /**
  * Auto-detects environment variables and project structure from a zip file archive.
  */
-export async function detectEnvFromZip(file: File): Promise<EnvDetectionResult> {
+export async function detectEnvFromZip(file: File, frameworks?: VercelFramework[]): Promise<EnvDetectionResult> {
   try {
     const zip = new JSZip();
     const zipContent = await zip.loadAsync(file);
+
+    const fileList: Array<{ path: string; content?: string }> = [];
+    for (const [path, entry] of Object.entries(zipContent.files)) {
+      if (entry.dir) continue;
+      // We only read small files for detection to save memory
+      if (entry.name.endsWith('package.json') || entry.name.endsWith('index.html')) {
+        fileList.push({ path, content: await entry.async('text') });
+      } else {
+        fileList.push({ path });
+      }
+    }
 
     const envFileCandidates = [
       '.env.example',
@@ -130,7 +143,20 @@ export async function detectEnvFromZip(file: File): Promise<EnvDetectionResult> 
       }
     }
 
-    // Inspect package.json if present
+    // Official Vercel rules detection
+    if (frameworks && frameworks.length > 0) {
+      const { detectFrameworkFromVercelRules } = await import('./vercel/frameworks');
+      const vFw = detectFrameworkFromVercelRules(frameworks, fileList);
+      if (vFw) {
+        return {
+          variables: detectRecommendedEnvForFramework(vFw),
+          detectedFramework: vFw,
+          summary: `Detected ${vFw.toUpperCase()} via Vercel rules.`,
+        };
+      }
+    }
+
+    // Inspect package.json if present (Legacy/Fallback)
     for (const [relativePath, zipEntry] of Object.entries(zipContent.files)) {
       if (zipEntry.dir) continue;
       const normalized = relativePath.toLowerCase().replace(/\\/g, '/');
@@ -190,6 +216,57 @@ export async function detectEnvFromZip(file: File): Promise<EnvDetectionResult> 
       variables: [],
       summary: err?.message || 'Failed to scan archive for environment configuration.',
     };
+  }
+}
+
+/**
+ * Attempts to detect framework from a public GitHub URL by fetching package.json
+ */
+export async function detectFrameworkFromGithub(url: string, frameworks?: VercelFramework[]): Promise<string | null> {
+  try {
+    const cleanUrl = url.trim().replace(/\/$/, '');
+    // Convert https://github.com/user/repo to raw.githubusercontent.com/user/repo/main/package.json
+    let rawBaseUrl = cleanUrl
+      .replace('github.com', 'raw.githubusercontent.com')
+      .replace(/\/blob\/[^\/]+/, '');
+
+    const branchCandidates = ['main', 'master', 'dev'];
+    for (const branch of branchCandidates) {
+      try {
+        const target = `${rawBaseUrl}/${branch}/package.json`;
+        const res = await fetch(target);
+        if (res.ok) {
+          const pkg = await res.json();
+          const deps = { ...(pkg.dependencies || {}), ...(pkg.devDependencies || {}) };
+          
+          // Use provided Vercel frameworks list for more accurate detection if available
+          if (frameworks && frameworks.length > 0) {
+            for (const fw of frameworks) {
+              if (fw.detectors?.some) {
+                const match = fw.detectors.some.some(d => 
+                  d.path === 'package.json' && d.matchContent && new RegExp(d.matchContent).test(JSON.stringify(pkg))
+                );
+                if (match) return fw.slug;
+              }
+            }
+          }
+
+          if (deps['next']) return 'nextjs';
+          if (deps['vite']) return 'vite';
+          if (deps['astro']) return 'astro';
+          if (deps['nuxt'] || deps['nuxt3']) return 'nuxt';
+          if (deps['@sveltejs/kit']) return 'svelte';
+          if (deps['react-scripts']) return 'react';
+          if (deps['vue']) return 'vue';
+          return 'other';
+        }
+      } catch {
+        continue;
+      }
+    }
+    return 'static';
+  } catch {
+    return null;
   }
 }
 
