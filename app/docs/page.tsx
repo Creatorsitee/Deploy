@@ -14,12 +14,7 @@ export default function DocsPage() {
   const [baseDomain, setBaseDomain] = useState('cmnty.biz.id');
 
   useEffect(() => {
-    fetch('/api/config')
-      .then((r) => safeJson(r))
-      .then((d) => {
-        if (d && d.baseDomain) setBaseDomain(d.baseDomain);
-      })
-      .catch(() => {});
+    // Note: /api/config is restricted. Using fallback for public view.
   }, []);
   const sections = [
     { id: 'overview', title: 'Platform Overview' },

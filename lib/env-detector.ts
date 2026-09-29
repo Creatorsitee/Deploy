@@ -1,6 +1,6 @@
 import JSZip from 'jszip';
 
-import { VercelFramework } from './vercel/frameworks';
+import { PlatformFramework } from './vercel/frameworks';
 
 export interface DetectedEnvVar {
   key: string;
@@ -94,7 +94,7 @@ export function serializeEnv(vars: { key: string; value: string }[]): string {
 /**
  * Auto-detects environment variables and project structure from a zip file archive.
  */
-export async function detectEnvFromZip(file: File, frameworks?: VercelFramework[]): Promise<EnvDetectionResult> {
+export async function detectEnvFromZip(file: File, frameworks?: PlatformFramework[]): Promise<EnvDetectionResult> {
   try {
     const zip = new JSZip();
     const zipContent = await zip.loadAsync(file);
@@ -143,15 +143,15 @@ export async function detectEnvFromZip(file: File, frameworks?: VercelFramework[
       }
     }
 
-    // Official Vercel rules detection
+    // Official platform rules detection
     if (frameworks && frameworks.length > 0) {
-      const { detectFrameworkFromVercelRules } = await import('./vercel/frameworks');
-      const vFw = detectFrameworkFromVercelRules(frameworks, fileList);
+      const { detectFrameworkFromPlatformRules } = await import('./vercel/frameworks');
+      const vFw = detectFrameworkFromPlatformRules(frameworks, fileList);
       if (vFw) {
         return {
           variables: detectRecommendedEnvForFramework(vFw),
           detectedFramework: vFw,
-          summary: `Detected ${vFw.toUpperCase()} via Vercel rules.`,
+          summary: `Detected ${vFw.toUpperCase()} via platform rules.`,
         };
       }
     }
@@ -222,7 +222,7 @@ export async function detectEnvFromZip(file: File, frameworks?: VercelFramework[
 /**
  * Attempts to detect framework from a public GitHub URL by fetching package.json
  */
-export async function detectFrameworkFromGithub(url: string, frameworks?: VercelFramework[]): Promise<string | null> {
+export async function detectFrameworkFromGithub(url: string, frameworks?: PlatformFramework[]): Promise<string | null> {
   try {
     const cleanUrl = url.trim().replace(/\/$/, '');
     // Convert https://github.com/user/repo to raw.githubusercontent.com/user/repo/main/package.json

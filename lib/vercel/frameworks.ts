@@ -9,7 +9,7 @@ export interface FrameworkMeta {
   badgeBg: string;
 }
 
-export interface VercelFramework {
+export interface PlatformFramework {
   name: string;
   slug: string | null;
   demo: string;
@@ -52,7 +52,7 @@ export interface VercelFramework {
   };
 }
 
-export const VERCEL_FRAMEWORKS: Record<string, FrameworkMeta> = {
+export const PLATFORM_PRESETS: Record<string, FrameworkMeta> = {
   nextjs: {
     name: 'Next.js',
     vercelId: 'nextjs',
@@ -255,19 +255,19 @@ export const VERCEL_FRAMEWORKS: Record<string, FrameworkMeta> = {
   },
 };
 
-export function getVercelFrameworkId(frameworkKey?: string | null): string | null {
+export function getPlatformFrameworkId(frameworkKey?: string | null): string | null {
   if (!frameworkKey) return null;
-  const match = VERCEL_FRAMEWORKS[frameworkKey];
+  const match = PLATFORM_PRESETS[frameworkKey];
   if (match) return match.vercelId;
   if (frameworkKey === 'static' || frameworkKey === 'other') return null;
   return frameworkKey;
 }
 
 /**
- * Detects framework from a list of files using official Vercel detector rules
+ * Detects framework from a list of files using official platform detector rules
  */
-export function detectFrameworkFromVercelRules(
-  frameworks: VercelFramework[],
+export function detectFrameworkFromPlatformRules(
+  frameworks: PlatformFramework[],
   files: Array<{ path: string; content?: string }>
 ): string | null {
   const filePaths = new Set(files.map((f) => f.path.replace(/\\/g, '/')));

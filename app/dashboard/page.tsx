@@ -24,7 +24,7 @@ export default function DashboardOverviewPage() {
   const { toast } = useToast();
   const [projects, setProjects] = useState<any[]>([]);
   const [baseDomain, setBaseDomain] = useState('cmnty.biz.id');
-  const [isVercelConfigured, setIsVercelConfigured] = useState<boolean>(true);
+  const [isEngineConfigured, setIsEngineConfigured] = useState<boolean>(true);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -45,7 +45,7 @@ export default function DashboardOverviewPage() {
       .then((d) => {
         if (isMounted && d) {
           if (d.baseDomain) setBaseDomain(d.baseDomain);
-          if (d.isVercelConfigured !== undefined) setIsVercelConfigured(d.isVercelConfigured);
+          if (d.isVercelConfigured !== undefined) setIsEngineConfigured(d.isVercelConfigured);
         }
       })
       .catch(() => {});

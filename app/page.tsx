@@ -16,18 +16,7 @@ export default function HomePage() {
   const [baseDomain, setBaseDomain] = useState('cmnty.biz.id');
 
   useEffect(() => {
-    async function loadConfig() {
-      try {
-        const res = await fetch('/api/config');
-        if (res.ok) {
-          const data = await safeJson(res);
-          if (data && data.baseDomain) {
-            setBaseDomain(data.baseDomain);
-          }
-        }
-      } catch (e) {}
-    }
-    loadConfig();
+    // Note: /api/config is restricted. Using fallback for public view.
   }, []);
 
   return (
@@ -39,11 +28,11 @@ export default function HomePage() {
         <section className="relative pt-16 pb-20 sm:pt-24 sm:pb-28 border-b border-neutral-200/80">
           <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
             <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-neutral-950 leading-[1.1] text-balance">
-              Deploy Web Apps Fast & Free with Instant Edge Routing
+              Platform Hosting & Deployment Web Aplikasi Modern
             </h1>
 
             <p className="text-base sm:text-lg text-neutral-600 max-w-2xl mx-auto leading-relaxed">
-              Simple, high-performance web Deploy powered by CMNTY Edge API. Deploy static sites, single HTML files, and modern web applications with automated subdomains and SSL certificates.
+              Infrastruktur cloud berkinerja tinggi untuk deployment situs statis, aplikasi web, dan proyek digital dengan manajemen subdomain serta sertifikat SSL otomatis.
             </p>
 
             {/* Direct CTAs */}
@@ -52,7 +41,7 @@ export default function HomePage() {
                 href="/dashboard/new"
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-xs sm:text-sm font-semibold text-white bg-neutral-950 rounded-lg hover:bg-neutral-800 transition active:scale-95 shadow-xs"
               >
-                <span>Deploy Project</span>
+                <span>Mulai Deploy</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
 
@@ -60,7 +49,7 @@ export default function HomePage() {
                 href="/register"
                 className="inline-flex items-center gap-2 px-6 py-2.5 text-xs sm:text-sm font-semibold text-neutral-700 bg-neutral-100 hover:bg-neutral-200 rounded-lg transition active:scale-95"
               >
-                Create Free Account
+                Buat Akun Gratis
               </Link>
             </div>
           </div>

@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
+import { motion, AnimatePresence } from 'motion/react';
 import DashboardLayout from '@/components/DashboardLayout';
 import DeploymentStatusBadge from '@/components/DeploymentStatusBadge';
 import SslStatusBadge from '@/components/SslStatusBadge';
@@ -60,7 +61,7 @@ export default function ProjectDetailPage() {
         }
       }
     } catch (err) {
-      console.error('Failed to fetch Vercel logs:', err);
+      console.error('Failed to fetch build logs:', err);
     } finally {
       setLoadingLogs(false);
     }
@@ -116,12 +117,12 @@ export default function ProjectDetailPage() {
     if (!projectId) return;
 
     authFetch(`/api/projects/${projectId}`)
-      .then((res) => {
+      .then(async (res) => {
         if (!res.ok) {
           if (res.status === 404) router.push('/dashboard');
           return null;
         }
-        return res.json();
+        return safeJson(res);
       })
       .then((data) => {
         if (!isMounted || !data) return;
@@ -890,67 +891,68 @@ export default function ProjectDetailPage() {
         )}
 
         {/* Build Logs Modal */}
-        {selectedDeployment && (
-          <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-xs flex items-center justify-center p-4">
-            <div className="bg-neutral-950 text-white border border-neutral-800 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-2xl overflow-hidden">
-              <div className="p-4 px-6 border-b border-neutral-800 flex items-center justify-between">
-                <div className="flex items-center gap-2.5">
-                  {/* Build Logo Icon */}
-                  <svg className="w-4 h-4 text-white fill-current shrink-0" viewBox="0 0 512 512">
-                    <path d="M256 48L512 464H0L256 48Z" />
-                  </svg>
-                  <div>
-                    <div className="font-mono text-xs font-bold flex items-center gap-2">
-                      <span>Build Inspector</span>
+        <AnimatePresence>
+          {selectedDeployment && (
+            <div className="fixed inset-0 z-50 bg-neutral-950/40 backdrop-blur-xs flex items-center justify-center p-4 sm:p-6">
+              <motion.div
+                initial={{ opacity: 0, scale: 0.96, y: 20 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.96, y: 20 }}
+                transition={{ duration: 0.25, ease: [0.16, 1, 0.3, 1] }}
+                className="bg-white border border-neutral-200 rounded-2xl w-full max-w-3xl max-h-[85vh] flex flex-col shadow-[0_32px_64px_-12px_rgba(0,0,0,0.14)] overflow-hidden"
+              >
+                {/* Clean Minimal Header */}
+                <div className="px-4 py-3 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/60">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-6 h-6 rounded-md bg-neutral-950 flex items-center justify-center shadow-xs shrink-0">
+                      <Terminal className="w-3.5 h-3.5 text-white" />
                     </div>
-                    <div className="text-[11px] text-neutral-400 font-mono mt-0.5">
-                      Deployment ID: {selectedDeployment.vercelDeploymentId || selectedDeployment.id}
+                    <div className="text-[11px] font-mono text-neutral-500">
+                      {selectedDeployment.id}
                     </div>
                   </div>
+
+                  <button
+                    onClick={() => setSelectedDeployment(null)}
+                    className="p-1.5 text-neutral-400 hover:text-neutral-950 hover:bg-neutral-200/60 rounded-lg transition"
+                    aria-label="Close"
+                  >
+                    <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                  </button>
                 </div>
 
-                <button
-                  onClick={() => setSelectedDeployment(null)}
-                  className="text-neutral-400 hover:text-white text-sm font-bold w-8 h-8 rounded-lg hover:bg-neutral-800 transition flex items-center justify-center"
-                >
-                  ✕
-                </button>
-              </div>
-
-              {/* Status Header */}
-              <div className="px-6 py-2 bg-neutral-900/60 border-b border-neutral-800/80 flex items-center justify-between text-xs font-mono">
-                <div className="flex items-center gap-2">
-                  <span className="text-neutral-400">Status:</span>
-                  <span className="font-bold text-emerald-400">{selectedDeployment.status}</span>
-                </div>
-                <div className="text-neutral-400 text-[11px]">
-                  {selectedDeployment.createdAt ? new Date(selectedDeployment.createdAt).toLocaleString() : ''}
-                </div>
-              </div>
-
-              {/* Log Stream Body */}
-              <div className="p-6 overflow-y-auto font-mono text-xs text-neutral-300 space-y-1.5 flex-1 bg-black/40 selection:bg-white selection:text-black">
-                {loadingLogs ? (
-                  <div className="flex items-center gap-2 text-neutral-400 py-4">
-                    <RefreshCw className="w-4 h-4 animate-spin text-emerald-400" />
-                    <span>Streaming build logs directly from cloud deployment edge...</span>
-                  </div>
-                ) : selectedDeployment.logs && selectedDeployment.logs.length > 0 ? (
-                  selectedDeployment.logs.map((line: string, i: number) => {
-                    const cleanLine = line.replace(/https:\/\/[a-zA-Z0-9-]+\.vercel\.app/g, `https://${project?.subdomain || 'site.cmnty.biz.id'}`);
-                    return (
-                      <div key={i} className="leading-relaxed whitespace-pre-wrap font-mono">
-                        {cleanLine}
+                {/* Log Viewport */}
+                <div className="flex-1 overflow-hidden flex flex-col bg-neutral-950">
+                  <div className="flex-1 overflow-y-auto p-5 font-mono text-[11px] leading-relaxed text-neutral-300 scrollbar-thin scrollbar-thumb-neutral-800">
+                    {loadingLogs ? (
+                      <div className="flex items-center gap-3 py-4 text-neutral-500">
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-neutral-400" />
+                        <span className="animate-pulse">Loading logs...</span>
                       </div>
-                    );
-                  })
-                ) : (
-                  <div className="text-neutral-500 py-4">No build logs recorded from edge yet.</div>
-                )}
-              </div>
+                    ) : selectedDeployment.logs && selectedDeployment.logs.length > 0 ? (
+                      <div className="space-y-1">
+                        {selectedDeployment.logs.map((line: string, i: number) => {
+                          const cleanLine = line.replace(/https:\/\/[a-zA-Z0-9-]+\.vercel\.app/g, `https://${project?.subdomain || 'site.cmnty.biz.id'}`);
+                          return (
+                            <div key={i} className="flex gap-4 group">
+                              <span className="w-7 shrink-0 text-neutral-700 text-right select-none">{i + 1}</span>
+                              <span className="break-all whitespace-pre-wrap">{cleanLine}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <div className="text-neutral-600 py-4 italic">No logs recorded.</div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
             </div>
-          </div>
-        )}
+          )}
+        </AnimatePresence>
       </div>
     </DashboardLayout>
   );

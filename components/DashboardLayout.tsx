@@ -3,6 +3,7 @@
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, useEffect, useSyncExternalStore, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import {
   LayoutDashboard,
   Server,
@@ -302,91 +303,101 @@ export default function DashboardLayout({ children, breadcrumbs }: DashboardLayo
         </header>
 
         {/* Mobile Drawer (Native Fixed Layout, No Portal / No Document Mutation) */}
-        {mobileOpen && (
-          <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
-            {/* Backdrop Overlay */}
-            <div
-              className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-              onClick={() => setMobileOpen(false)}
-            />
+        <AnimatePresence>
+          {mobileOpen && (
+            <div className="md:hidden fixed inset-0 z-50 flex flex-col justify-end">
+              {/* Backdrop Overlay */}
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.25, ease: 'easeOut' }}
+                className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+                onClick={() => setMobileOpen(false)}
+              />
 
-            {/* Bottom Sheet Card */}
-            <div
-              onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientY)}
-              onTouchMove={(e) => {
-                if (touchStart !== null && e.targetTouches[0].clientY - touchStart > 60) {
-                  setMobileOpen(false);
-                  setTouchStart(null);
-                }
-              }}
-              className="relative z-10 w-full bg-white rounded-t-3xl border-t border-neutral-200/80 p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom duration-300 max-h-[80vh] overflow-y-auto pb-10"
-            >
-              {/* Drag Handle Bar */}
-              <div className="flex flex-col items-center justify-center pt-1 pb-1">
-                <div
-                  className="w-14 h-1.5 bg-neutral-300 hover:bg-neutral-400 active:bg-neutral-500 rounded-full cursor-grab transition-colors"
-                  onClick={() => setMobileOpen(false)}
-                />
-                <div className="flex items-center justify-between w-full mt-3 border-b border-neutral-100 pb-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-white font-bold text-xs">
-                      C
+              {/* Bottom Sheet Card */}
+              <motion.div
+                initial={{ y: '100%', opacity: 0.8 }}
+                animate={{ y: 0, opacity: 1 }}
+                exit={{ y: '100%', opacity: 0 }}
+                transition={{ type: 'spring', damping: 28, stiffness: 300, mass: 0.7 }}
+                onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientY)}
+                onTouchMove={(e) => {
+                  if (touchStart !== null && e.targetTouches[0].clientY - touchStart > 60) {
+                    setMobileOpen(false);
+                    setTouchStart(null);
+                  }
+                }}
+                className="relative z-10 w-full bg-white rounded-t-3xl border-t border-neutral-200/80 p-6 shadow-2xl space-y-4 max-h-[80vh] overflow-y-auto pb-10"
+              >
+                {/* Drag Handle Bar */}
+                <div className="flex flex-col items-center justify-center pt-1 pb-1">
+                  <div
+                    className="w-14 h-1.5 bg-neutral-300 hover:bg-neutral-400 active:bg-neutral-500 rounded-full cursor-grab transition-colors"
+                    onClick={() => setMobileOpen(false)}
+                  />
+                  <div className="flex items-center justify-between w-full mt-3 border-b border-neutral-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded bg-neutral-950 flex items-center justify-center text-white font-bold text-xs">
+                        C
+                      </div>
+                      <span className="text-xs font-bold text-neutral-950">CMNTY Workspace</span>
                     </div>
-                    <span className="text-xs font-bold text-neutral-950">CMNTY Workspace</span>
+                    <button
+                      onClick={() => setMobileOpen(false)}
+                      className="p-1.5 rounded-full bg-neutral-100 text-neutral-500 hover:text-neutral-900 active:scale-95"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Nav Cards */}
+                <div className="space-y-2">
+                  {navItems.map((item) => {
+                    const Icon = item.icon;
+                    const isActive = pathname === item.href;
+                    return (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        target={item.external ? '_blank' : undefined}
+                        onClick={() => setMobileOpen(false)}
+                        className={`flex items-center justify-between p-3.5 rounded-xl text-xs font-semibold transition active:scale-98 ${
+                          isActive
+                            ? 'bg-neutral-950 text-white shadow-xs'
+                            : 'bg-neutral-50 text-neutral-800 hover:bg-neutral-100'
+                        }`}
+                      >
+                        <div className="flex items-center gap-3">
+                          <Icon className="w-4 h-4" />
+                          <span>{item.label}</span>
+                        </div>
+                        {item.external && <ExternalLink className="w-3 h-3 opacity-60" />}
+                      </Link>
+                    );
+                  })}
+                </div>
+
+                {/* User Profile Footer */}
+                <div className="pt-3 border-t border-neutral-100 flex items-center justify-between bg-neutral-50 p-3 rounded-xl">
+                  <div className="min-w-0 pr-2">
+                    <div className="text-xs font-semibold text-neutral-900 truncate">{user?.name || 'User'}</div>
+                    <div className="text-[11px] text-neutral-400 truncate">{user?.email}</div>
                   </div>
                   <button
-                    onClick={() => setMobileOpen(false)}
-                    className="p-1.5 rounded-full bg-neutral-100 text-neutral-500 hover:text-neutral-900 active:scale-95"
+                    onClick={handleLogout}
+                    className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition flex items-center gap-1.5 shrink-0 active:scale-95"
                   >
-                    <X className="w-4 h-4" />
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Sign Out</span>
                   </button>
                 </div>
-              </div>
-
-              {/* Nav Cards */}
-              <div className="space-y-2">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const isActive = pathname === item.href;
-                  return (
-                    <Link
-                      key={item.href}
-                      href={item.href}
-                      target={item.external ? '_blank' : undefined}
-                      onClick={() => setMobileOpen(false)}
-                      className={`flex items-center justify-between p-3.5 rounded-xl text-xs font-semibold transition active:scale-98 ${
-                        isActive
-                          ? 'bg-neutral-950 text-white shadow-xs'
-                          : 'bg-neutral-50 text-neutral-800 hover:bg-neutral-100'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <Icon className="w-4 h-4" />
-                        <span>{item.label}</span>
-                      </div>
-                      {item.external && <ExternalLink className="w-3 h-3 opacity-60" />}
-                    </Link>
-                  );
-                })}
-              </div>
-
-              {/* User Profile Footer */}
-              <div className="pt-3 border-t border-neutral-100 flex items-center justify-between bg-neutral-50 p-3 rounded-xl">
-                <div className="min-w-0 pr-2">
-                  <div className="text-xs font-semibold text-neutral-900 truncate">{user?.name || 'User'}</div>
-                  <div className="text-[11px] text-neutral-400 truncate">{user?.email}</div>
-                </div>
-                <button
-                  onClick={handleLogout}
-                  className="px-3 py-1.5 bg-rose-50 text-rose-600 rounded-lg text-xs font-bold hover:bg-rose-100 transition flex items-center gap-1.5 shrink-0 active:scale-95"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Sign Out</span>
-                </button>
-              </div>
+              </motion.div>
             </div>
-          </div>
-        )}
+          )}
+        </AnimatePresence>
 
         {/* Content body */}
         <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto min-w-0 overflow-x-hidden">{children}</main>

@@ -828,7 +828,7 @@ export default function AdminDashboardPage() {
           <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
             <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
               <div>
-                <h2 className="text-base font-bold text-neutral-950">Vercel API Infrastructure Credentials</h2>
+                <h2 className="text-base font-bold text-neutral-950">Cloud Engine Infrastructure Credentials</h2>
                 <p className="text-xs text-neutral-500 mt-0.5">
                   Official REST API connection credentials stored securely in the embedded JSON database.
                 </p>
@@ -854,7 +854,7 @@ export default function AdminDashboardPage() {
             <form onSubmit={handleSaveSettings} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                  Vercel Token (Server Stored)
+                  API Token (Server Stored)
                 </label>
                 <input
                   type="password"
@@ -868,7 +868,7 @@ export default function AdminDashboardPage() {
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                  Vercel Team ID (Optional)
+                  Cloud Project ID / Team ID
                 </label>
                 <input
                   type="text"
@@ -900,7 +900,7 @@ export default function AdminDashboardPage() {
                   disabled={savingSettings}
                   className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 disabled:opacity-50 transition"
                 >
-                  {savingSettings ? 'Verifying & Saving...' : 'Save & Test Vercel Connection'}
+                  {savingSettings ? 'Verifying & Saving...' : 'Save & Test Infrastructure Connection'}
                 </button>
               </div>
             </form>

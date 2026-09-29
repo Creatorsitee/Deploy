@@ -5,7 +5,7 @@ import { getVercelConfig } from '@/lib/vercel/client';
 import { createVercelProject } from '@/lib/vercel/projects';
 import { createVercelDeployment, getVercelDeployment, getVercelDeploymentEvents } from '@/lib/vercel/deployments';
 import { addVercelProjectDomain, getVercelDomainConfig } from '@/lib/vercel/domains';
-import { getVercelFrameworkId } from '@/lib/vercel/frameworks';
+import { getPlatformFrameworkId } from '@/lib/vercel/frameworks';
 
 export interface ExtractedFile {
   file: string;
@@ -261,11 +261,11 @@ export async function executeDeployment(params: {
   // If Vercel API is not configured, deployment fails immediately. Simulated Deploy has been completely removed.
   if (!vercelConfig.isConfigured) {
     const duration = Date.now() - startTime;
-    db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] [DEPLOYMENT ERROR] Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.`);
+    db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] [DEPLOYMENT ERROR] Cloud Engine API Token is not configured. Please set a valid Token in the Admin Panel.`);
     
     const failedDeployment = db.updateDeployment(deploymentId, {
       status: 'ERROR',
-      errorMessage: 'Vercel API Token is not configured. Please set a valid Vercel Token in the Admin Panel.',
+      errorMessage: 'Cloud Engine API Token is not configured. Please set a valid Token in the Admin Panel.',
       completedAt: new Date().toISOString(),
       durationMs: duration,
     });
@@ -285,7 +285,7 @@ export async function executeDeployment(params: {
   }
 
   try {
-    db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] Synchronizing Vercel Project "${project.slug}"...`);
+    db.appendDeploymentLog(deploymentId, `[${new Date().toISOString()}] Synchronizing Project State "${project.slug}"...`);
 
     // Fetch existing project environment variables
     const envVars = db.getEnvVarsByProjectId(project.id);
@@ -315,10 +315,10 @@ export async function executeDeployment(params: {
 
     db.appendDeploymentLog(
       deploymentId,
-      `[${new Date().toISOString()}] Vercel project synced. Transmitting ${files.length} files to Vercel Deployments API...`
+      `[${new Date().toISOString()}] Infrastructure state synced. Transmitting ${files.length} files to Deployments API...`
     );
 
-    // 2. Dispatch deployment to Vercel v13 API
+    // 2. Dispatch deployment to Cloud API
     const deployRes = await createVercelDeployment({
       name: project.slug,
       project: vercelProjectId || project.slug,
@@ -328,7 +328,7 @@ export async function executeDeployment(params: {
         encoding: f.encoding || 'utf-8',
       })),
       projectSettings: {
-        framework: getVercelFrameworkId(project.framework),
+        framework: getPlatformFrameworkId(project.framework),
         buildCommand: project.buildCommand || null,
         outputDirectory: project.outputDirectory || null,
       },
@@ -343,14 +343,14 @@ export async function executeDeployment(params: {
 
     db.appendDeploymentLog(
       deploymentId,
-      `[${new Date().toISOString()}] Vercel Deployment Created (ID: ${vercelDeployment.id}). URL: ${vercelUrl}`
+      `[${new Date().toISOString()}] Deployment Pipeline Created (ID: ${vercelDeployment.id}). URL: ${vercelUrl}`
     );
     db.appendDeploymentLog(
       deploymentId,
       `[${new Date().toISOString()}] Attaching custom subdomain: ${cmntySubdomain}...`
     );
 
-    // 3. Attach custom subdomain via Vercel official domains API
+    // 3. Attach custom subdomain via infrastructure edge API
     const domainRes = await addVercelProjectDomain(vercelProjectId || project.slug, cmntySubdomain);
     let domainVerified = false;
 
@@ -358,7 +358,7 @@ export async function executeDeployment(params: {
       domainVerified = Boolean(domainRes.data?.verified);
       db.appendDeploymentLog(
         deploymentId,
-        `[${new Date().toISOString()}] Subdomain ${cmntySubdomain} registered on Vercel. Verified: ${domainVerified}`
+        `[${new Date().toISOString()}] Subdomain ${cmntySubdomain} registered on Edge. Verified: ${domainVerified}`
       );
     } else {
       db.appendDeploymentLog(

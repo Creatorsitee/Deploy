@@ -2,6 +2,16 @@
 
 import React, { useEffect, useState, useTransition } from 'react';
 import { usePathname, useSearchParams } from 'next/navigation';
+import {
+  LayoutDashboard,
+  Server,
+  Gauge,
+  Home,
+  Shield,
+  Plus,
+  ArrowRight,
+  BookOpen
+} from 'lucide-react';
 
 export default function NavigationSkeleton() {
   const pathname = usePathname();
@@ -9,6 +19,24 @@ export default function NavigationSkeleton() {
   const [isNavigating, setIsNavigating] = useState(false);
   const [targetPath, setTargetPath] = useState<string>('');
   const [, startTransition] = useTransition();
+
+  // Read stored user from localStorage if in client to match sidebar exactly
+  const [user, setUser] = useState<any>(null);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const stored = localStorage.getItem('cmnty_user');
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          const t = setTimeout(() => {
+            setUser(parsed);
+          }, 0);
+          return () => clearTimeout(t);
+        } catch (e) {}
+      }
+    }
+  }, [isNavigating]);
 
   // Trigger skeleton on route change and auto-dismiss after brief smooth pulse
   useEffect(() => {
@@ -68,18 +96,27 @@ export default function NavigationSkeleton() {
 
   const effectivePath = targetPath || pathname || '';
 
-  // 1. Landing Page Skeleton
+  // 1. Landing Page Skeleton - Match app/page.tsx perfectly
   if (effectivePath === '/') {
     return (
       <div className="fixed inset-0 z-[99999] bg-white flex flex-col text-neutral-900 pointer-events-none animate-in fade-in duration-100">
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-neutral-200/80">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-neutral-200 animate-pulse shrink-0"></div>
-              <div className="h-5 bg-neutral-200 rounded w-24 animate-pulse"></div>
+        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200">
+          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center text-white font-bold text-sm">
+                C
+              </div>
+              <span className="text-base font-bold tracking-tight text-neutral-950">
+                CMNTY Deploy
+              </span>
             </div>
-            <div className="flex items-center gap-3">
-              <div className="h-8 bg-neutral-100 rounded-lg w-20 animate-pulse hidden sm:block"></div>
+            <nav className="hidden md:flex items-center gap-8 text-sm font-medium text-neutral-600">
+              <div className="h-4 bg-neutral-200 rounded w-16 animate-pulse"></div>
+              <div className="h-4 bg-neutral-200 rounded w-20 animate-pulse"></div>
+              <div className="h-4 bg-neutral-200 rounded w-24 animate-pulse"></div>
+            </nav>
+            <div className="hidden md:flex items-center gap-3">
+              <div className="h-8 bg-neutral-100 rounded-lg w-16 animate-pulse"></div>
               <div className="h-8 bg-neutral-200 rounded-lg w-24 animate-pulse"></div>
             </div>
           </div>
@@ -88,10 +125,15 @@ export default function NavigationSkeleton() {
         <main className="flex-1">
           <section className="relative pt-16 pb-20 sm:pt-24 sm:pb-28 border-b border-neutral-200/80">
             <div className="max-w-4xl mx-auto px-4 sm:px-6 text-center space-y-6">
-              <div className="h-12 sm:h-16 bg-neutral-200 rounded-2xl w-3/4 mx-auto animate-pulse"></div>
-              <div className="h-4 sm:h-5 bg-neutral-100 rounded-lg w-2/3 mx-auto animate-pulse"></div>
-              <div className="h-4 sm:h-5 bg-neutral-100 rounded-lg w-1/2 mx-auto animate-pulse"></div>
-              <div className="flex items-center justify-center gap-3 pt-4">
+              <h1 className="text-3xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight text-neutral-950 leading-[1.1] animate-pulse">
+                <span className="block h-12 bg-neutral-200 rounded-2xl w-3/4 mx-auto mb-3"></span>
+                <span className="block h-12 bg-neutral-200 rounded-2xl w-1/2 mx-auto"></span>
+              </h1>
+              <div className="space-y-2 max-w-2xl mx-auto">
+                <div className="h-4 bg-neutral-100 rounded w-full animate-pulse"></div>
+                <div className="h-4 bg-neutral-100 rounded w-5/6 mx-auto animate-pulse"></div>
+              </div>
+              <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
                 <div className="h-10 bg-neutral-200 rounded-lg w-36 animate-pulse"></div>
                 <div className="h-10 bg-neutral-100 rounded-lg w-36 animate-pulse"></div>
               </div>
@@ -119,15 +161,19 @@ export default function NavigationSkeleton() {
     );
   }
 
-  // 2. Documentation Skeleton
+  // 2. Documentation Skeleton - Match app/docs/page.tsx perfectly
   if (effectivePath.startsWith('/docs')) {
     return (
       <div className="fixed inset-0 z-[99999] bg-white flex flex-col text-neutral-900 pointer-events-none animate-in fade-in duration-100">
-        <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-neutral-200/80">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
-            <div className="flex items-center gap-2.5">
-              <div className="w-8 h-8 rounded-lg bg-neutral-200 animate-pulse shrink-0"></div>
-              <div className="h-5 bg-neutral-200 rounded w-24 animate-pulse"></div>
+        <header className="sticky top-0 z-40 bg-white/95 backdrop-blur-md border-b border-neutral-200">
+          <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
+            <div className="flex items-center gap-2 group">
+              <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center text-white font-bold text-sm">
+                C
+              </div>
+              <span className="text-base font-bold tracking-tight text-neutral-950">
+                CMNTY Deploy
+              </span>
             </div>
             <div className="h-8 bg-neutral-200 rounded-lg w-28 animate-pulse"></div>
           </div>
@@ -136,11 +182,16 @@ export default function NavigationSkeleton() {
         <main className="flex-1 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-12 w-full">
           <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-12">
             <aside className="hidden md:block md:col-span-3 space-y-6">
-              <div className="h-4 bg-neutral-200 rounded w-32 animate-pulse"></div>
-              <div className="space-y-2">
-                {[1, 2, 3, 4, 5, 6].map((i) => (
-                  <div key={i} className="h-4 bg-neutral-100 rounded w-4/5 animate-pulse"></div>
-                ))}
+              <div className="sticky top-24 space-y-4">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-neutral-400">
+                  <BookOpen className="w-4 h-4 text-neutral-900 animate-pulse" />
+                  <span>Documentation</span>
+                </div>
+                <div className="space-y-2">
+                  {[1, 2, 3, 4, 5, 6].map((i) => (
+                    <div key={i} className="h-4 bg-neutral-100 rounded w-4/5 animate-pulse"></div>
+                  ))}
+                </div>
               </div>
             </aside>
             <div className="md:col-span-9 space-y-8">
@@ -174,7 +225,9 @@ export default function NavigationSkeleton() {
     return (
       <div className="fixed inset-0 z-[99999] bg-[#fafafa] flex flex-col justify-center py-12 px-6 sm:px-8 text-neutral-900 pointer-events-none animate-in fade-in duration-100">
         <div className="sm:mx-auto sm:w-full sm:max-w-md text-center space-y-4">
-          <div className="w-10 h-10 rounded-xl bg-neutral-200 mx-auto animate-pulse"></div>
+          <div className="w-10 h-10 rounded-xl bg-neutral-950 mx-auto flex items-center justify-center text-white font-bold text-sm">
+            C
+          </div>
           <div className="h-7 bg-neutral-200 rounded w-48 mx-auto animate-pulse"></div>
           <div className="h-4 bg-neutral-100 rounded w-64 mx-auto animate-pulse"></div>
         </div>
@@ -196,7 +249,7 @@ export default function NavigationSkeleton() {
     );
   }
 
-  // 4. Dashboard Shell Skeleton for All Dashboard Pages & Admin
+  // 4. Dashboard & Admin Shell Skeleton - Render static Sidebar items, Top Bar breadcrumbs & New Project CTA perfectly
   const isProjectDetail =
     effectivePath.startsWith('/dashboard/projects/') &&
     effectivePath !== '/dashboard/projects' &&
@@ -207,33 +260,92 @@ export default function NavigationSkeleton() {
   const isProjectsList = effectivePath === '/dashboard/projects' || effectivePath === '/dashboard/projects/';
   const isAdmin = effectivePath.startsWith('/admin');
 
+  const navItems = [
+    { label: 'Overview', href: '/dashboard', icon: LayoutDashboard },
+    { label: 'Projects', href: '/dashboard/projects', icon: Server },
+    { label: 'Usage', href: '/dashboard/usage', icon: Gauge },
+    { label: 'Home', href: '/', icon: Home },
+  ];
+
+  if (user?.role === 'admin') {
+    navItems.push({ label: 'Admin Panel', href: '/admin', icon: Shield });
+  }
+
+  // Breadcrumbs title determination to match DashboardLayout perfectly
+  let breadcrumbLabel = 'Dashboard';
+  if (isProjectDetail) {
+    breadcrumbLabel = 'Dashboard / Projects / Manage Project';
+  } else if (isNewProject) {
+    breadcrumbLabel = 'Dashboard / New Project';
+  } else if (isUsage) {
+    breadcrumbLabel = 'Dashboard / Usage & Limits';
+  } else if (isProjectsList) {
+    breadcrumbLabel = 'Dashboard / Projects';
+  } else if (isAdmin) {
+    breadcrumbLabel = 'Dashboard / Admin Panel';
+  }
+
   return (
     <div className="fixed inset-0 z-[99999] bg-[#fafafa] flex flex-col md:flex-row text-neutral-900 pointer-events-none animate-in fade-in duration-100">
-      {/* Sidebar Skeleton */}
+      {/* Sidebar Skeleton - Matching DashboardLayout perfectly */}
       <aside className="hidden md:flex flex-col w-64 border-r border-neutral-200 bg-white shrink-0">
         <div className="p-6 border-b border-neutral-100 flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-neutral-200 animate-pulse shrink-0"></div>
+          <div className="w-8 h-8 rounded-lg bg-neutral-950 flex items-center justify-center text-white font-bold text-sm shrink-0">
+            C
+          </div>
           <div>
-            <div className="h-4 bg-neutral-200 rounded w-20 animate-pulse"></div>
-            <div className="h-3 bg-neutral-100 rounded w-16 animate-pulse mt-1"></div>
+            <div className="text-sm font-bold text-neutral-950 tracking-tight">CMNTY</div>
+            <div className="text-[10px] text-neutral-400 uppercase tracking-wider font-semibold">Deploy Platform</div>
           </div>
         </div>
-        <nav className="p-4 space-y-2 flex-1">
-          {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="h-9 bg-neutral-100 rounded-lg animate-pulse"></div>
-          ))}
+        <nav className="p-4 space-y-1 flex-1">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const isActive =
+              item.href === '/'
+                ? effectivePath === '/'
+                : effectivePath === item.href ||
+                  (item.href !== '/dashboard' && effectivePath.startsWith(item.href) && item.href !== '/docs');
+
+            return (
+              <div
+                key={item.href}
+                className={`flex items-center gap-2.5 px-3 py-2 text-xs font-medium rounded-lg transition ${
+                  isActive
+                    ? 'bg-neutral-950 text-white shadow-sm'
+                    : 'text-neutral-600 hover:text-neutral-950 hover:bg-neutral-100'
+                }`}
+              >
+                <Icon className="w-4 h-4 shrink-0" />
+                <span>{item.label}</span>
+              </div>
+            );
+          })}
         </nav>
-        <div className="p-4 border-t border-neutral-100 bg-neutral-50/50">
-          <div className="h-4 bg-neutral-100 rounded w-2/3 animate-pulse"></div>
+        <div className="p-4 border-t border-neutral-100 bg-neutral-50/50 flex items-center justify-between">
+          <div className="min-w-0 pr-2">
+            <div className="text-xs font-semibold text-neutral-900 truncate">{user?.name || 'User Profile'}</div>
+            <div className="text-[11px] text-neutral-400 truncate">{user?.email || 'user@example.com'}</div>
+          </div>
         </div>
       </aside>
 
       {/* Main Content Area */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-        {/* Top Navbar Skeleton */}
+        {/* Top Navbar Skeleton - Matches DashboardLayout.tsx perfectly */}
         <header className="h-14 sm:h-16 bg-white border-b border-neutral-200/80 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30">
-          <div className="h-4 bg-neutral-200 rounded w-36 animate-pulse"></div>
-          <div className="h-8 bg-neutral-200 rounded-lg w-28 animate-pulse"></div>
+          <div className="flex items-center gap-2 min-w-0 pr-2">
+            <div className="text-xs font-medium text-neutral-500 min-w-0 truncate">
+              {breadcrumbLabel}
+            </div>
+          </div>
+          <div className="flex items-center gap-2 sm:gap-3 shrink-0">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-white bg-neutral-950 rounded-lg shadow-xs whitespace-nowrap">
+              <Plus className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">New Project</span>
+              <span className="sm:hidden">New</span>
+            </div>
+          </div>
         </header>
 
         <main className="flex-1 p-3 sm:p-6 lg:p-8 max-w-7xl w-full mx-auto space-y-6 overflow-y-auto">
@@ -382,7 +494,7 @@ export default function NavigationSkeleton() {
                   <div className="h-3 bg-neutral-100 rounded w-72 animate-pulse"></div>
                 </div>
                 <div className="flex items-center gap-2">
-                  <div className="h-9 bg-neutral-100 rounded-lg w-28 animate-pulse"></div>
+                  <div className="h-9 bg-neutral-200 rounded-lg w-28 animate-pulse"></div>
                   <div className="h-9 bg-neutral-200 rounded-lg w-32 animate-pulse"></div>
                 </div>
               </div>

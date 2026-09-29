@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { useState, useSyncExternalStore, useMemo } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { ArrowRight, Menu, X } from 'lucide-react';
 import {
   subscribeAuth,
@@ -99,102 +100,112 @@ export default function Navbar() {
       </header>
 
       {/* Mobile Drawer (Native Fixed Layout, No Portal / No Document Mutation) */}
-      {mobileMenuOpen && (
-        <div className="md:hidden fixed inset-0 z-[9999] flex flex-col justify-end">
-          {/* Backdrop Overlay */}
-          <div
-            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
-            onClick={() => setMobileMenuOpen(false)}
-          />
+      <AnimatePresence>
+        {mobileMenuOpen && (
+          <div className="md:hidden fixed inset-0 z-[9999] flex flex-col justify-end">
+            {/* Backdrop Overlay */}
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.25, ease: 'easeOut' }}
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs"
+              onClick={() => setMobileMenuOpen(false)}
+            />
 
-          {/* Bottom Card Drawer */}
-          <div
-            onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientY)}
-            onTouchMove={(e) => {
-              if (touchStart !== null && e.targetTouches[0].clientY - touchStart > 60) {
-                setMobileMenuOpen(false);
-                setTouchStart(null);
-              }
-            }}
-            className="relative z-10 w-full bg-white rounded-t-3xl border-t border-neutral-200/80 p-6 shadow-2xl space-y-5 animate-in slide-in-from-bottom duration-300 max-h-[80vh] overflow-y-auto pb-10"
-          >
-            {/* Drag Handle Bar */}
-            <div className="flex flex-col items-center justify-center pt-1 pb-2">
-              <div
-                className="w-14 h-1.5 bg-neutral-300 hover:bg-neutral-400 active:bg-neutral-500 rounded-full cursor-grab transition-colors"
-                onClick={() => setMobileMenuOpen(false)}
-              />
-              <div className="flex items-center justify-between w-full mt-3 border-b border-neutral-100 pb-3">
-                <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Navigation Menu</span>
-                <button
+            {/* Bottom Card Drawer */}
+            <motion.div
+              initial={{ y: '100%', opacity: 0.8 }}
+              animate={{ y: 0, opacity: 1 }}
+              exit={{ y: '100%', opacity: 0 }}
+              transition={{ type: 'spring', damping: 28, stiffness: 300, mass: 0.7 }}
+              onTouchStart={(e) => setTouchStart(e.targetTouches[0].clientY)}
+              onTouchMove={(e) => {
+                if (touchStart !== null && e.targetTouches[0].clientY - touchStart > 60) {
+                  setMobileMenuOpen(false);
+                  setTouchStart(null);
+                }
+              }}
+              className="relative z-10 w-full bg-white rounded-t-3xl border-t border-neutral-200/80 p-6 shadow-2xl space-y-5 max-h-[80vh] overflow-y-auto pb-10"
+            >
+              {/* Drag Handle Bar */}
+              <div className="flex flex-col items-center justify-center pt-1 pb-2">
+                <div
+                  className="w-14 h-1.5 bg-neutral-300 hover:bg-neutral-400 active:bg-neutral-500 rounded-full cursor-grab transition-colors"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="p-1.5 rounded-full bg-neutral-100 text-neutral-500 hover:text-neutral-900 active:scale-95"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            </div>
-
-            {/* Navigation Cards */}
-            <div className="space-y-2">
-              <Link
-                href="/#features"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
-              >
-                <span>Features</span>
-                <ArrowRight className="w-4 h-4 text-neutral-400" />
-              </Link>
-              <Link
-                href="/#architecture"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
-              >
-                <span>Architecture</span>
-                <ArrowRight className="w-4 h-4 text-neutral-400" />
-              </Link>
-              <Link
-                href="/docs"
-                onClick={() => setMobileMenuOpen(false)}
-                className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
-              >
-                <span>Documentation</span>
-                <ArrowRight className="w-4 h-4 text-neutral-400" />
-              </Link>
-            </div>
-
-            {/* Actions */}
-            <div className="pt-2 flex flex-col gap-2.5">
-              {user ? (
-                <Link
-                  href="/dashboard"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="w-full text-center py-3.5 text-xs font-bold text-white bg-neutral-950 rounded-xl shadow-xs active:scale-98"
-                >
-                  Dashboard
-                </Link>
-              ) : (
-                <>
-                  <Link
-                    href="/login"
+                />
+                <div className="flex items-center justify-between w-full mt-3 border-b border-neutral-100 pb-3">
+                  <span className="text-xs font-bold uppercase tracking-wider text-neutral-400">Navigation Menu</span>
+                  <button
                     onClick={() => setMobileMenuOpen(false)}
-                    className="w-full text-center py-3.5 text-xs font-bold text-neutral-800 bg-neutral-100 rounded-xl active:scale-98"
+                    className="p-1.5 rounded-full bg-neutral-100 text-neutral-500 hover:text-neutral-900 active:scale-95"
                   >
-                    Sign In
-                  </Link>
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Navigation Cards */}
+              <div className="space-y-2">
+                <Link
+                  href="/#features"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
+                >
+                  <span>Features</span>
+                  <ArrowRight className="w-4 h-4 text-neutral-400" />
+                </Link>
+                <Link
+                  href="/#architecture"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
+                >
+                  <span>Architecture</span>
+                  <ArrowRight className="w-4 h-4 text-neutral-400" />
+                </Link>
+                <Link
+                  href="/docs"
+                  onClick={() => setMobileMenuOpen(false)}
+                  className="flex items-center justify-between p-3.5 bg-neutral-50 hover:bg-neutral-100 rounded-xl text-sm font-semibold text-neutral-900 transition active:scale-98"
+                >
+                  <span>Documentation</span>
+                  <ArrowRight className="w-4 h-4 text-neutral-400" />
+                </Link>
+              </div>
+
+              {/* Actions */}
+              <div className="pt-2 flex flex-col gap-2.5">
+                {user ? (
                   <Link
-                    href="/register"
+                    href="/dashboard"
                     onClick={() => setMobileMenuOpen(false)}
                     className="w-full text-center py-3.5 text-xs font-bold text-white bg-neutral-950 rounded-xl shadow-xs active:scale-98"
                   >
-                    Deploy Free
+                    Dashboard
                   </Link>
-                </>
-              )}
-            </div>
+                ) : (
+                  <>
+                    <Link
+                      href="/login"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full text-center py-3.5 text-xs font-bold text-neutral-800 bg-neutral-100 rounded-xl active:scale-98"
+                    >
+                      Sign In
+                    </Link>
+                    <Link
+                      href="/register"
+                      onClick={() => setMobileMenuOpen(false)}
+                      className="w-full text-center py-3.5 text-xs font-bold text-white bg-neutral-950 rounded-xl shadow-xs active:scale-98"
+                    >
+                      Deploy Free
+                    </Link>
+                  </>
+                )}
+              </div>
+            </motion.div>
           </div>
-        </div>
-      )}
+        )}
+      </AnimatePresence>
     </>
   );
 }

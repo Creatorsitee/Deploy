@@ -11,9 +11,48 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   }
 
   const { id } = await params;
-  const project = db.getProjectById(id);
+  let project = db.getProjectById(id);
 
   if (!project) {
+    // If not found in DB, check if user is admin and if it exists on Vercel
+    if (user.role === 'admin') {
+      const config = getVercelConfig();
+      if (config.isConfigured) {
+        try {
+          const { getVercelProject } = await import('@/lib/vercel/projects');
+          const vRes = await getVercelProject(id);
+          if (vRes.ok && vRes.data) {
+            const vp = vRes.data;
+            // Return a virtual project object
+            return NextResponse.json({
+              project: {
+                id: vp.id,
+                userId: 'vercel_account',
+                name: vp.name,
+                slug: vp.name,
+                framework: vp.framework || 'static',
+                status: vp.paused ? 'SUSPENDED' : 'ACTIVE',
+                subdomain: `${vp.name}.${config.baseDomain}`,
+                fullSubdomain: `${vp.name}.${config.baseDomain}`,
+                vercelProjectId: vp.id,
+                createdAt: new Date(vp.createdAt).toISOString(),
+                updatedAt: new Date(vp.updatedAt || vp.createdAt).toISOString(),
+                isVirtual: true,
+              },
+              deployments: [],
+              domains: [],
+              environmentVariables: [],
+              systemConfig: {
+                baseDomain: config.baseDomain,
+                availableDomains: [config.baseDomain],
+              },
+            });
+          }
+        } catch (e) {
+          console.warn('Vercel virtual project fetch error:', e);
+        }
+      }
+    }
     return NextResponse.json({ error: 'Project not found' }, { status: 404 });
   }
 

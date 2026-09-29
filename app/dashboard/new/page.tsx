@@ -4,7 +4,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import DashboardLayout from '@/components/DashboardLayout';
 import { authFetch } from '@/lib/auth/client';
-import { VERCEL_FRAMEWORKS } from '@/lib/vercel/frameworks';
+import { PLATFORM_PRESETS } from '@/lib/vercel/frameworks';
 import FrameworkIcon from '@/components/FrameworkIcon';
 import { useToast } from '@/lib/contexts/ToastContext';
 import { safeJson } from '@/lib/fetch-utils';
@@ -64,8 +64,8 @@ export default function NewProjectPage() {
   const [projectSlug, setProjectSlug] = useState('');
   const [availableDomains, setAvailableDomains] = useState<string[]>(['cmnty.biz.id']);
   const [selectedDomain, setSelectedDomain] = useState<string>('cmnty.biz.id');
-  const [isVercelConfigured, setIsVercelConfigured] = useState<boolean>(true);
-  const [vercelFrameworks, setVercelFrameworks] = useState<any[]>([]);
+  const [isCloudEngineConfigured, setIsCloudEngineConfigured] = useState<boolean>(true);
+  const [frameworksList, setFrameworksList] = useState<any[]>([]);
 
   // Step 2: Source Code
   const [sourceType, setSourceType] = useState<'upload' | 'git'>('upload');
@@ -78,7 +78,7 @@ export default function NewProjectPage() {
   const [installCommand, setInstallCommand] = useState('');
   const [outputDirectory, setOutputDirectory] = useState('./');
 
-  // Environment variables state (Vercel style)
+  // Environment variables state
   const [envVars, setEnvVars] = useState<EnvVarItem[]>([]);
   const [newEnvKey, setNewEnvKey] = useState('');
   const [newEnvValue, setNewEnvValue] = useState('');
@@ -97,7 +97,7 @@ export default function NewProjectPage() {
 
       if (sourceType === 'upload' && uploadedFile) {
         if (uploadedFile.name.endsWith('.zip')) {
-          const detection = await detectEnvFromZip(uploadedFile, vercelFrameworks);
+          const detection = await detectEnvFromZip(uploadedFile, frameworksList);
           foundVars = detection.variables;
           summaryText = detection.summary;
           if (detection.detectedFramework) {
@@ -179,15 +179,15 @@ export default function NewProjectPage() {
     async function loadConfig() {
       try {
         const [configRes, projectsRes] = await Promise.all([
-          fetch('/api/config'),
+          fetch('/api/config').catch(() => null),
           authFetch('/api/projects').catch(() => null),
         ]);
 
-        if (configRes.ok) {
+        if (configRes && configRes.ok) {
           const data = await safeJson(configRes);
           if (data) {
             if (data.isVercelConfigured !== undefined) {
-              setIsVercelConfigured(data.isVercelConfigured);
+              setIsCloudEngineConfigured(data.isVercelConfigured);
             }
             if (Array.isArray(data.availableDomains) && data.availableDomains.length > 0) {
               setAvailableDomains(data.availableDomains);
@@ -197,6 +197,10 @@ export default function NewProjectPage() {
               setSelectedDomain(data.baseDomain);
             }
           }
+        } else {
+          // Fallback if blocked
+          setAvailableDomains(['cmnty.biz.id']);
+          setSelectedDomain('cmnty.biz.id');
         }
 
         if (projectsRes && projectsRes.ok) {
@@ -215,20 +219,20 @@ export default function NewProjectPage() {
     }
     loadConfig();
 
-    async function loadVercelFrameworks() {
+    async function loadFrameworks() {
       try {
         const res = await authFetch('/api/frameworks');
         if (res.ok) {
           const data = await safeJson(res);
           if (data && Array.isArray(data.frameworks)) {
-            setVercelFrameworks(data.frameworks);
+            setFrameworksList(data.frameworks);
           }
         }
       } catch (e) {
-        console.error('Failed to load Vercel frameworks:', e);
+        console.error('Failed to load frameworks:', e);
       }
     }
-    loadVercelFrameworks();
+    loadFrameworks();
   }, []);
 
   // Auto-slug generator
@@ -289,7 +293,7 @@ export default function NewProjectPage() {
         else if (lowName.includes('next')) autoFw = 'nextjs';
 
         setFramework(autoFw);
-        const preset = VERCEL_FRAMEWORKS[autoFw];
+        const preset = PLATFORM_PRESETS[autoFw];
         if (preset) {
           setBuildCommand(preset.defaultBuild);
           setOutputDirectory(preset.defaultOutput);
@@ -373,10 +377,12 @@ export default function NewProjectPage() {
     setDeploying(true);
     setErrorMessage('');
     setDeployStepIndex(0);
+    setDeploymentStatusText('Deployment Pipeline In Progress...');
 
     try {
-      // 1. Create project on backend with selected domain and initial env vars
+      // 1. Validating Project & Environment Configuration
       setDeployStepIndex(1);
+      setDeploymentStatusText('Validating Project & Environment Configuration');
       const projRes = await authFetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,8 +410,9 @@ export default function NewProjectPage() {
       const project = projData.project;
       setCreatedProjectId(project.id);
 
-      // 2. Dispatch deployment to Vercel API
+      // 2. Transmitting Source Files to Cloud Engine
       setDeployStepIndex(2);
+      setDeploymentStatusText('Transmitting Source Files to Cloud Engine');
       let deployRes: Response;
 
       if (sourceType === 'upload' && uploadedFile) {
@@ -432,7 +439,6 @@ export default function NewProjectPage() {
         });
       }
 
-      setDeployStepIndex(3);
       const deployData = await safeJson(deployRes);
       if (!deployRes.ok) {
         throw new Error(deployData?.error || 'Deployment failed');
@@ -443,40 +449,46 @@ export default function NewProjectPage() {
         throw new Error(deployment.errorMessage || 'Deployment encountered an error');
       }
 
+      // 3. Binding Edge Subdomain & SSL Certificate
+      setDeployStepIndex(3);
+      setDeploymentStatusText(`Binding Edge Subdomain (*.${selectedDomain}) & SSL Certificate`);
+      await new Promise(r => setTimeout(r, 3000));
+
+      // 4. Finalizing Live Edge Routing
       setDeployStepIndex(4);
+      setDeploymentStatusText('Finalizing Live Edge Routing');
+      await new Promise(r => setTimeout(r, 2000));
+      
       const productionUrl = deployment.productionUrl || `https://${projectSlug}.${selectedDomain}`;
       setFinalUrl(productionUrl);
       setIsSuccessfullyDeployed(true);
 
-      // AS REQUESTED: Wait 30 seconds before showing the success popup notification
-      // We implement a countdown and more status messages for better UX
-      const statusMessages = [
-        'Propagating global edge routing...',
-        'Validating SSL certificate issuance...',
-        'Synchronizing production environment variables...',
-        'Warming up serverless execution cache...',
-        'Finalizing CDN caching layers...',
-        'Verifying production URL accessibility...',
-        'Almost ready! Generating project preview...',
+      // 5. Validating SSL certificate issuance (Countdown)
+      setDeployStepIndex(5);
+      const extendedMessages = [
+        'Synchronizing Infrastructure State',
+        'Analyzing Build Manifest & Dependencies',
+        'Initializing Serverless Runtime Environment',
+        'Provisioning Global Anycast IP Routing',
+        'Propagating DNS across CDN POPs',
+        'Validating SSL certificate issuance',
       ];
 
-      for (let i = 30; i > 0; i--) {
+      for (let i = 20; i > 0; i--) {
         setDeploymentCountdown(i);
         
-        // Change text every few seconds
-        if (i > 25) setDeploymentStatusText(statusMessages[0]);
-        else if (i > 20) setDeploymentStatusText(statusMessages[1]);
-        else if (i > 15) setDeploymentStatusText(statusMessages[2]);
-        else if (i > 10) setDeploymentStatusText(statusMessages[3]);
-        else if (i > 5) setDeploymentStatusText(statusMessages[4]);
-        else if (i > 2) setDeploymentStatusText(statusMessages[5]);
-        else setDeploymentStatusText(statusMessages[6]);
+        if (i > 17) setDeploymentStatusText(extendedMessages[0]);
+        else if (i > 14) setDeploymentStatusText(extendedMessages[1]);
+        else if (i > 11) setDeploymentStatusText(extendedMessages[2]);
+        else if (i > 8) setDeploymentStatusText(extendedMessages[3]);
+        else if (i > 4) setDeploymentStatusText(extendedMessages[4]);
+        else setDeploymentStatusText(extendedMessages[5]);
 
         await new Promise((resolve) => setTimeout(resolve, 1000));
       }
+      
       setDeploymentCountdown(0);
       setDeploymentStatusText('Deployment verified! Opening dashboard...');
-
       setShowSuccessModal(true);
     } catch (err: any) {
       setErrorMessage(err.message || 'Deployment error occurred');
@@ -788,18 +800,18 @@ export default function NewProjectPage() {
                 onClick={async () => {
                   if (sourceType === 'git' && gitUrl.includes('github.com')) {
                     setDetectingEnv(true);
-                    const fw = await detectFrameworkFromGithub(gitUrl, vercelFrameworks);
+                    const fw = await detectFrameworkFromGithub(gitUrl, frameworksList);
                     if (fw) {
                       setFramework(fw);
                       
                       // Check vercel frameworks first for settings
-                      const vFw = vercelFrameworks.find(f => f.slug === fw);
+                      const vFw = frameworksList.find(f => f.slug === fw);
                       if (vFw) {
                         setBuildCommand(vFw.settings.buildCommand.value || '');
                         setOutputDirectory(vFw.settings.outputDirectory.value || '');
                         setInstallCommand(vFw.settings.installCommand.value || '');
                       } else {
-                        const preset = VERCEL_FRAMEWORKS[fw];
+                        const preset = PLATFORM_PRESETS[fw];
                         if (preset) {
                           setBuildCommand(preset.defaultBuild);
                           setOutputDirectory(preset.defaultOutput);
@@ -849,16 +861,16 @@ export default function NewProjectPage() {
                         const newFw = e.target.value;
                         setFramework(newFw);
                         
-                        // Check vercel frameworks first
-                        const vFw = vercelFrameworks.find(f => f.slug === newFw);
+                        // Check platform frameworks first
+                        const vFw = frameworksList.find(f => f.slug === newFw);
                         if (vFw) {
                           setBuildCommand(vFw.settings.buildCommand.value || '');
                           setOutputDirectory(vFw.settings.outputDirectory.value || '');
                           setInstallCommand(vFw.settings.installCommand.value || '');
                           return;
                         }
-
-                        const preset = VERCEL_FRAMEWORKS[newFw];
+                        
+                        const preset = PLATFORM_PRESETS[newFw];
                         if (preset) {
                           setBuildCommand(preset.defaultBuild);
                           setOutputDirectory(preset.defaultOutput);
@@ -867,22 +879,22 @@ export default function NewProjectPage() {
                       }}
                       className="w-full py-1.5 bg-transparent text-xs font-bold text-neutral-900 focus:outline-none cursor-pointer"
                     >
-                      <optgroup label="Core Presets">
-                        {Object.entries(VERCEL_FRAMEWORKS).map(([key, info]) => (
-                          <option key={key} value={key}>
-                            {info.name}
-                          </option>
-                        ))}
-                      </optgroup>
-                      {vercelFrameworks.length > 0 && (
-                        <optgroup label="Official Vercel Frameworks">
-                          {vercelFrameworks.map((f) => (
-                            <option key={f.slug} value={f.slug || 'other'}>
-                              {f.name}
+                        <optgroup label="Core Frameworks">
+                          {Object.entries(PLATFORM_PRESETS).map(([key, info]) => (
+                            <option key={key} value={key}>
+                              {info.name}
                             </option>
                           ))}
                         </optgroup>
-                      )}
+                        {frameworksList.length > 0 && (
+                          <optgroup label="Extended Platform Presets">
+                            {frameworksList.map((f) => (
+                              <option key={f.slug} value={f.slug || 'other'}>
+                                {f.name}
+                              </option>
+                            ))}
+                          </optgroup>
+                        )}
                     </select>
                   </div>
                 </div>
@@ -1126,53 +1138,81 @@ export default function NewProjectPage() {
               </div>
             </div>
 
-            {/* Animated Pipeline Stage Checklist */}
+            {/* Animated Pipeline Stage Checklist Overlay */}
             {deploying && (
-              <div className="p-6 bg-neutral-950 text-white rounded-2xl space-y-4 shadow-xl animate-in fade-in duration-300">
-                <div className="flex items-center justify-between text-xs border-b border-neutral-800 pb-3">
-                   <div className="flex items-center gap-2">
-                     <Clock className="w-4 h-4 text-amber-400 animate-spin" />
-                     <span className="font-mono uppercase font-semibold text-neutral-200">
-                       Deployment Pipeline In Progress...
-                     </span>
-                   </div>
-                </div>
+              <div className="fixed inset-0 z-[100] bg-white flex flex-col items-center justify-center p-6 animate-in fade-in duration-500">
+                <div className="max-w-md w-full space-y-12">
+                  <div className="text-center space-y-4">
+                    <div className="relative w-16 h-16 mx-auto mb-6">
+                      <div className="absolute inset-0 border-[3px] border-neutral-100 rounded-full"></div>
+                      <div className="absolute inset-0 border-[3px] border-neutral-950 rounded-full border-t-transparent animate-spin"></div>
+                    </div>
+                    <h2 className="text-xl font-bold text-neutral-950 tracking-tight">Deployment Pipeline In Progress...</h2>
+                    <div className="h-5">
+                      <p className="text-xs text-neutral-500 font-medium animate-pulse">
+                        {deploymentStatusText}
+                      </p>
+                    </div>
+                  </div>
 
-                <div className="space-y-3 pt-1">
+                  {/* Progress Bar Minimalist */}
+                  <div className="space-y-3">
+                    <div className="h-1.5 w-full bg-neutral-100 rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-neutral-950 transition-all duration-700 ease-out"
+                        style={{ width: `${(Math.max(1, deployStepIndex) / 5) * 100}%` }}
+                      ></div>
+                    </div>
+                    <div className="flex justify-between text-[10px] font-bold uppercase tracking-widest text-neutral-400 tabular-nums">
+                      <span>Pipeline Stage {Math.max(1, deployStepIndex)} / 5</span>
+                      {deploymentCountdown > 0 && deployStepIndex === 5 && (
+                        <span>Final Verification: {deploymentCountdown}s</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Minimalist Step Checklist */}
+                  <div className="pt-4 grid grid-cols-1 gap-4">
                     {[
-                      { idx: 1, title: 'Validating Project & Environment Configuration' },
-                      { idx: 2, title: 'Transmitting Source Files to Cloud Engine' },
-                      { idx: 3, title: `Binding Edge Subdomain (*.${selectedDomain}) & SSL Certificate` },
-                      { idx: 4, title: 'Finalizing Live Edge Routing' },
-                    ].map((st) => {
-                      const isDone = deployStepIndex > st.idx || (st.idx === 4 && isSuccessfullyDeployed && deploymentCountdown === 0);
-                      const isWaiting = st.idx === 4 && isSuccessfullyDeployed && deploymentCountdown > 0;
-                      const isActive = !isDone && !isWaiting && deployStepIndex === st.idx;
+                      { id: 1, text: "Validating Project & Environment Configuration" },
+                      { id: 2, text: "Transmitting Source Files to Cloud Engine" },
+                      { id: 3, text: `Binding Edge Subdomain (*.${selectedDomain}) & SSL Certificate` },
+                      { id: 4, text: "Finalizing Live Edge Routing" },
+                      { id: 5, text: "Validating SSL certificate issuance" }
+                    ].map((step, i) => {
+                      const isDone = deployStepIndex > step.id;
+                      const isActive = deployStepIndex === step.id;
                       
                       return (
-                        <div key={st.idx} className="flex items-center gap-3 text-xs">
-                          {isDone ? (
-                            <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                          ) : (isActive || isWaiting) ? (
-                            <RefreshCw className="w-4 h-4 text-amber-400 animate-spin shrink-0" />
-                          ) : (
-                            <div className="w-4 h-4 rounded-full border border-neutral-700 shrink-0" />
-                          )}
-                          <span
-                            className={`${
-                              (isDone || isActive || isWaiting) ? 'text-neutral-200 font-medium' : 'text-neutral-600'
-                            } flex items-center gap-2`}
-                          >
-                            {st.title}
-                            {isWaiting && (
-                              <span className="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 rounded-full text-[10px] font-bold">
-                                {deploymentStatusText}
-                              </span>
-                            )}
+                        <div key={step.id} className="flex items-center gap-4 transition-opacity duration-300">
+                          <div className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-all duration-500 ${
+                            isDone 
+                              ? 'bg-neutral-950 border-neutral-950 text-white scale-100' 
+                              : isActive 
+                              ? 'border-neutral-900 bg-white ring-4 ring-neutral-50 scale-110' 
+                              : 'border-neutral-200 bg-neutral-50 scale-90'
+                          }`}>
+                            {isDone ? (
+                              <Check className="w-3 h-3" />
+                            ) : isActive ? (
+                              <div className="w-1.5 h-1.5 bg-neutral-900 rounded-full animate-pulse"></div>
+                            ) : null}
+                          </div>
+                          <span className={`text-xs font-medium transition-colors duration-300 ${
+                            isDone ? 'text-neutral-400' : isActive ? 'text-neutral-900 font-bold' : 'text-neutral-300'
+                          }`}>
+                            {step.text}
                           </span>
                         </div>
                       );
                     })}
+                  </div>
+
+                  <div className="pt-8 text-center">
+                    <p className="text-[10px] text-neutral-400 font-medium">
+                      Proses deployment sedang berjalan. Harap tidak menutup halaman ini.
+                    </p>
+                  </div>
                 </div>
               </div>
             )}

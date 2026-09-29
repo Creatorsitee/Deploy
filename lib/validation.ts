@@ -81,10 +81,12 @@ export function isSubdomainReserved(slug: string): boolean {
   const s = slug.toLowerCase().trim();
 
   // 1. Extreme sensitivity (block any containment)
-  const extremeBlock = ['vercel', 'cmnty', 'google', 'admin', 'system', 'root'];
+  const extremeBlock = ['vercel', 'cmnty', 'google', 'admin', 'system', 'root', 'tesapi', 'api-test', 'internal-api'];
   if (extremeBlock.some(b => s.includes(b))) return true;
 
   // 2. Exact or Prefix/Suffix with hyphen for general reserved words
+  const additionalReserved = ['tesapi', 'testapi', 'apites', 'api-test'];
+  if (additionalReserved.includes(s)) return true;
   return RESERVED_SUBDOMAINS.some((reserved) => {
     return (
       s === reserved || 

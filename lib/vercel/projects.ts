@@ -1,13 +1,13 @@
 import { vercelFetch } from './client';
-import { VERCEL_FRAMEWORKS, getVercelFrameworkId, VercelFramework } from './frameworks';
+import { PLATFORM_PRESETS, getPlatformFrameworkId, PlatformFramework } from './frameworks';
 
-export { VERCEL_FRAMEWORKS, getVercelFrameworkId };
+export { PLATFORM_PRESETS, getPlatformFrameworkId };
 
 /**
  * Fetches the list of all supported frameworks from Vercel API
  */
 export async function listVercelFrameworks() {
-  return vercelFetch<{ frameworks: VercelFramework[] }>('/v1/frameworks');
+  return vercelFetch<{ frameworks: PlatformFramework[] }>('/v1/frameworks');
 }
 
 export interface VercelProjectConfig {
@@ -36,11 +36,11 @@ export interface VercelProjectResponse {
   };
 }
 
-/**
- * Creates or ensures a project exists on Vercel
- */
-export async function createVercelProject(config: VercelProjectConfig) {
-  const vercelFramework = getVercelFrameworkId(config.framework);
+  /**
+   * Creates or ensures a project exists on Vercel
+   */
+  export async function createVercelProject(config: VercelProjectConfig) {
+    const vercelFramework = getPlatformFrameworkId(config.framework);
 
   const payload: Record<string, any> = {
     name: config.name,
@@ -102,7 +102,7 @@ export async function updateVercelProject(
   if (settings.outputDirectory !== undefined) payload.outputDirectory = settings.outputDirectory;
   if (settings.nodeVersion !== undefined) payload.nodeVersion = settings.nodeVersion;
   if (settings.framework !== undefined) {
-    payload.framework = getVercelFrameworkId(settings.framework);
+    payload.framework = getPlatformFrameworkId(settings.framework);
   }
 
   return vercelFetch<VercelProjectResponse>(`/v9/projects/${encodeURIComponent(projectIdOrName)}`, {
