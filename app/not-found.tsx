@@ -2,27 +2,21 @@ import Link from 'next/link';
 
 export default function NotFound() {
   return (
-    <div className="min-h-screen bg-[#fafafa] flex flex-col items-center justify-center p-6 text-neutral-900">
-      <div className="w-10 h-10 rounded-xl bg-neutral-950 flex items-center justify-center text-white font-bold text-base mb-4">
-        C
-      </div>
-      <h1 className="text-3xl font-bold tracking-tight text-neutral-950">404</h1>
-      <p className="mt-2 text-sm text-neutral-500 max-w-sm text-center">
-        The page or project you requested could not be found or has been moved.
-      </p>
-      <div className="mt-6 flex items-center gap-3">
-        <Link
-          href="/"
-          className="px-4 py-2 bg-white border border-neutral-200 rounded-lg text-xs font-semibold text-neutral-800 hover:bg-neutral-50 transition"
-        >
-          Home
-        </Link>
-        <Link
-          href="/dashboard"
-          className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 transition"
-        >
-          Go to Dashboard
-        </Link>
+    <div className="min-h-screen flex flex-col items-center justify-center bg-[#fafafa] text-neutral-900 px-6">
+      <div className="text-center space-y-4">
+        <h1 className="text-6xl font-bold tracking-tighter">404</h1>
+        <h2 className="text-xl font-semibold tracking-tight text-neutral-600">Page not found</h2>
+        <p className="text-sm text-neutral-500 max-w-xs mx-auto">
+          The project or page you are looking for does not exist or has been moved.
+        </p>
+        <div className="pt-4">
+          <Link
+            href="/dashboard"
+            className="inline-flex h-10 items-center justify-center rounded-lg bg-neutral-950 px-6 text-xs font-semibold text-white transition hover:bg-neutral-800 active:scale-95 shadow-sm"
+          >
+            Return to Dashboard
+          </Link>
+        </div>
       </div>
     </div>
   );
