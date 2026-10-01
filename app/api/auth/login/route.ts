@@ -15,6 +15,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() || 
+               req.headers.get('x-real-ip') || 
+               'unknown';
+    const ua = req.headers.get('user-agent') || 'unknown';
+
     const emailTrimmed = email.trim().toLowerCase();
     const envAdminEmail = process.env.ADMIN_EMAIL?.trim().toLowerCase();
     const envAdminPassword = process.env.ADMIN_PASSWORD;
@@ -48,13 +53,41 @@ export async function POST(req: NextRequest) {
         );
       }
 
+      // Check if user is suspended
+      if (user.isSuspended) {
+        return NextResponse.json(
+          { error: 'This account has been suspended by an administrator.' },
+          { status: 403 }
+        );
+      }
+
+      // Check if account is locked due to failed attempts
+      if ((user.failedLoginAttempts || 0) >= 5) {
+        return NextResponse.json(
+          { error: 'Account locked due to too many failed attempts. Please contact support.' },
+          { status: 423 }
+        );
+      }
+
       const isValid = await verifyPassword(password, user.passwordHash);
       if (!isValid) {
+        // Increment failed attempts
+        db.updateUser(user.id, {
+          failedLoginAttempts: (user.failedLoginAttempts || 0) + 1,
+        });
+
         return NextResponse.json(
           { error: 'Invalid email or password' },
           { status: 401 }
         );
       }
+
+      // Reset failed attempts on successful login
+      db.updateUser(user.id, {
+        failedLoginAttempts: 0,
+        lastLoginIp: ip,
+        lastLoginAt: new Date().toISOString(),
+      });
     }
 
     const token = await createSessionCookie(user);
@@ -63,6 +96,7 @@ export async function POST(req: NextRequest) {
       userId: user.id,
       userEmail: user.email,
       action: 'USER_LOGIN',
+      metadata: { ip, ua },
     });
 
     return NextResponse.json({

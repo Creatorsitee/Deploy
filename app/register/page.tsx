@@ -30,10 +30,22 @@ export default function RegisterPage() {
     setLoading(true);
 
     try {
+      let deviceId = '';
+      if (typeof window !== 'undefined') {
+        deviceId = localStorage.getItem('cmnty_device_id') || '';
+        if (!deviceId) {
+          deviceId = 'dev_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString(36);
+          localStorage.setItem('cmnty_device_id', deviceId);
+        }
+      }
+
       const res = await fetch('/api/auth/register', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, email, password }),
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-device-id': deviceId,
+        },
+        body: JSON.stringify({ name, email, password, deviceId }),
       });
 
       const data = await safeJson(res);
@@ -119,10 +131,10 @@ export default function RegisterPage() {
               <input
                 type="password"
                 required
-                minLength={6}
+                minLength={8}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Minimum 6 characters"
+                placeholder="Min. 8 chars (uppercase, lowercase, number, symbol)"
                 className="w-full px-3.5 py-2.5 bg-neutral-50 border border-neutral-200 rounded-lg text-sm focus:outline-none focus:border-neutral-950 transition"
               />
             </div>

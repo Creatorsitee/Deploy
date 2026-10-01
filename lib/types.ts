@@ -6,6 +6,13 @@ export interface User {
   name: string;
   passwordHash: string;
   role: UserRole;
+  registeredIp?: string;
+  registeredUserAgent?: string;
+  registeredDeviceId?: string;
+  lastLoginIp?: string;
+  lastLoginAt?: string;
+  isSuspended?: boolean;
+  failedLoginAttempts?: number;
   createdAt: string;
 }
 

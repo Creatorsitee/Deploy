@@ -87,8 +87,12 @@ function syncEnvAdmin(data: DatabaseSchema): void {
 let cachedDb: DatabaseSchema | null = null;
 
 function ensureDataDir() {
-  if (!fs.existsSync(DATA_DIR)) {
-    fs.mkdirSync(DATA_DIR, { recursive: true });
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true });
+    }
+  } catch (e) {
+    console.warn('Filesystem is not accessible for writing. Database persistence may be disabled.', e);
   }
 }
 
@@ -100,7 +104,7 @@ export function getDb(): DatabaseSchema {
 
   ensureDataDir();
 
-  if (fs.existsSync(DB_FILE)) {
+  if (fs.existsSync && fs.existsSync(DB_FILE)) {
     try {
       const content = fs.readFileSync(DB_FILE, 'utf-8');
       cachedDb = JSON.parse(content);
@@ -109,7 +113,8 @@ export function getDb(): DatabaseSchema {
       }
       syncEnvAdmin(cachedDb!);
       return cachedDb!;
-    } catch {
+    } catch (e) {
+      console.error('Failed to read database file:', e);
       cachedDb = createInitialDatabase();
       syncEnvAdmin(cachedDb);
       saveDb(cachedDb);
@@ -125,11 +130,20 @@ export function getDb(): DatabaseSchema {
 
 export function saveDb(data: DatabaseSchema): void {
   cachedDb = data;
+  
+  // Skip filesystem operations in environments where fs is not available or non-functional
+  if (!fs.writeFileSync) {
+    console.warn('Database save skipped: fs.writeFileSync is not available.');
+    return;
+  }
+
   ensureDataDir();
   const tmpFile = `${DB_FILE}.tmp.${Date.now()}`;
   try {
     fs.writeFileSync(tmpFile, JSON.stringify(data, null, 2), 'utf-8');
-    fs.renameSync(tmpFile, DB_FILE);
+    if (fs.renameSync) {
+      fs.renameSync(tmpFile, DB_FILE);
+    }
   } catch (err) {
     console.error('Failed to write db file atomically', err);
     try {
@@ -155,6 +169,24 @@ export const db = {
 
   getAllUsers(): User[] {
     return getDb().users;
+  },
+
+  getUserByIp(ip: string): User | undefined {
+    const data = getDb();
+    if (!ip || ip === 'unknown') return undefined;
+    return data.users.find((u) => u.registeredIp && u.registeredIp.trim() === ip.trim());
+  },
+
+  getUserByUserAgent(ua: string): User | undefined {
+    const data = getDb();
+    if (!ua || ua === 'unknown') return undefined;
+    return data.users.find((u) => u.registeredUserAgent && u.registeredUserAgent.trim() === ua.trim());
+  },
+
+  getUserByDeviceId(deviceId: string): User | undefined {
+    const data = getDb();
+    if (!deviceId) return undefined;
+    return data.users.find((u) => u.registeredDeviceId && u.registeredDeviceId === deviceId);
   },
 
   createUser(user: User): User {
@@ -430,5 +462,10 @@ export const db = {
     data.users = preservedUsers;
     data.auditLogs = [resetLog];
     saveDb(data);
+  },
+
+  clearDatabase(): void {
+    cachedDb = createInitialDatabase();
+    saveDb(cachedDb);
   }
 };

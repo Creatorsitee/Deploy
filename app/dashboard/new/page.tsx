@@ -517,14 +517,14 @@ export default function NewProjectPage() {
         </div>
 
         {/* Multi-step progress indicator: 1 — 2 — 3 — 4 */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-3 border-b border-neutral-200/80 pb-6 pt-2 text-xs font-semibold">
+        <div className="flex items-center justify-center gap-2 sm:gap-4 border-b border-neutral-200/80 pb-6 pt-2 text-xs font-semibold">
           {[
             { num: 1, name: 'Name & Domain' },
             { num: 2, name: 'Source Code' },
             { num: 3, name: 'Build & Environment' },
             { num: 4, name: 'Review & Deploy' },
           ].map((s, idx) => (
-            <div key={s.num} className="flex items-center gap-1.5 sm:gap-3">
+            <div key={s.num} className="flex items-center gap-2 sm:gap-4">
               <button
                 type="button"
                 onClick={() => {
@@ -562,8 +562,8 @@ export default function NewProjectPage() {
 
               {idx < 3 && (
                 <div
-                  className={`h-1 sm:h-2 w-4 sm:w-16 md:w-24 rounded-full transition-colors ${
-                    step > s.num ? 'bg-neutral-950' : 'bg-neutral-300'
+                  className={`h-2 sm:h-3.5 w-8 sm:w-24 md:w-36 lg:w-48 rounded-full transition-all duration-300 shrink-0 ${
+                    step > s.num ? 'bg-neutral-950' : 'bg-neutral-200'
                   }`}
                   aria-hidden="true"
                 />
@@ -1210,7 +1210,7 @@ export default function NewProjectPage() {
 
                   <div className="pt-8 text-center">
                     <p className="text-[10px] text-neutral-400 font-medium">
-                      Proses deployment sedang berjalan. Harap tidak menutup halaman ini.
+                      Powered by Cmnty Edge · Do not close this window
                     </p>
                   </div>
                 </div>

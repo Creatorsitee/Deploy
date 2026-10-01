@@ -132,7 +132,12 @@ export async function getCurrentUser(request?: Request | NextRequest): Promise<U
     if (!payload?.userId) return null;
 
     const user = db.getUserById(payload.userId) || db.getUserByEmail(payload.email);
-    if (user) return user;
+    if (user) {
+      if (user.isSuspended) {
+        return null; // Deny suspended user
+      }
+      return user;
+    }
 
     // Resilient fallback for verified signed session token
     return {

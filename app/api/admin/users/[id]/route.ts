@@ -28,6 +28,44 @@ export async function PATCH(
       return NextResponse.json({ user: updated });
     }
 
+    // Security Reset (Clear IP/UA lock)
+    if (body.action === 'resetSecurity') {
+      const updated = db.updateUser(id, { 
+        registeredIp: undefined, 
+        registeredUserAgent: undefined 
+      });
+      db.addAuditLog({
+        userId: admin.id,
+        userEmail: admin.email,
+        action: 'USER_SECURITY_RESET',
+        metadata: { targetUserId: id, targetEmail: user.email },
+      });
+      return NextResponse.json({ user: updated, message: 'Security lock cleared. User can now re-register or update device.' });
+    }
+
+    // Account Suspension
+    if (body.action === 'suspend') {
+      const updated = db.updateUser(id, { isSuspended: true });
+      db.addAuditLog({
+        userId: admin.id,
+        userEmail: admin.email,
+        action: 'USER_SUSPEND',
+        metadata: { targetUserId: id, targetEmail: user.email },
+      });
+      return NextResponse.json({ user: updated, message: 'User account suspended.' });
+    }
+
+    if (body.action === 'unsuspend') {
+      const updated = db.updateUser(id, { isSuspended: false, failedLoginAttempts: 0 });
+      db.addAuditLog({
+        userId: admin.id,
+        userEmail: admin.email,
+        action: 'USER_UNSUSPEND',
+        metadata: { targetUserId: id, targetEmail: user.email },
+      });
+      return NextResponse.json({ user: updated, message: 'User account reactivated.' });
+    }
+
     return NextResponse.json({ error: 'Invalid payload' }, { status: 400 });
   } catch (err: any) {
     if (err.message === 'UNAUTHORIZED' || err.message === 'FORBIDDEN') {

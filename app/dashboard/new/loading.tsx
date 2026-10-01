@@ -8,7 +8,7 @@ export default function NewProjectLoading() {
         {/* Step Indicator */}
         <div className="flex items-center gap-2 pt-3">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="flex-1 h-2 bg-neutral-100 rounded-full"></div>
+            <div key={i} className="flex-1 h-2.5 sm:h-3.5 bg-neutral-200/80 rounded-full"></div>
           ))}
         </div>
       </div>

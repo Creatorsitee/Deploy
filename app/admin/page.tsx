@@ -281,6 +281,63 @@ export default function AdminDashboardPage() {
     });
   };
 
+  const handleResetSecurity = (userId: string, userEmail: string) => {
+    confirmModal({
+      title: 'Reset Security Lock',
+      message: `Clear the IP and Device lock for "${userEmail}"? This allows the user to re-register or update their primary device.`,
+      confirmText: 'Reset Security',
+      danger: true,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/admin/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action: 'resetSecurity' }),
+          });
+          if (res.ok) {
+            toast.success('Security lock cleared successfully');
+            loadAdminData();
+          } else {
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to reset security');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error resetting security');
+        }
+      },
+    });
+  };
+
+  const handleToggleSuspendUser = (userId: string, currentStatus: boolean, userEmail: string) => {
+    const action = currentStatus ? 'unsuspend' : 'suspend';
+    confirmModal({
+      title: currentStatus ? 'Reactivate User Account' : 'Suspend User Account',
+      message: currentStatus 
+        ? `Are you sure you want to reactivate account for "${userEmail}"?`
+        : `Are you sure you want to suspend account for "${userEmail}"? They will be unable to login or access their projects.`,
+      confirmText: currentStatus ? 'Reactivate Account' : 'Suspend Account',
+      danger: !currentStatus,
+      onConfirm: async () => {
+        try {
+          const res = await authFetch(`/api/admin/users/${userId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ action }),
+          });
+          if (res.ok) {
+            toast.success(`User account ${currentStatus ? 'reactivated' : 'suspended'}`);
+            loadAdminData();
+          } else {
+            const d = await safeJson(res);
+            toast.error(d?.error || 'Failed to update account status');
+          }
+        } catch (err: any) {
+          toast.error(err.message || 'Error updating account status');
+        }
+      },
+    });
+  };
+
   const handleDeleteUser = (userId: string, userEmail: string) => {
     confirmModal({
       title: 'Delete User Account',
@@ -548,75 +605,131 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[650px]">
-                <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="px-4 py-3">User Details</th>
-                    <th className="px-4 py-3">Role</th>
-                    <th className="px-4 py-3">Hosted Projects</th>
-                    <th className="px-4 py-3">Joined Date</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {loading ? (
-                    [1, 2, 3, 4].map((i) => (
-                      <tr key={i}>
-                        <td colSpan={5} className="px-4 py-4">
-                          <div className="h-6 bg-neutral-100 rounded animate-pulse w-full"></div>
+            <div className="overflow-x-auto -mx-5 sm:-mx-6">
+              <div className="inline-block min-w-full align-middle px-5 sm:px-6">
+                <table className="min-w-[900px] w-full text-left text-xs border-separate border-spacing-0">
+                  <thead className="bg-neutral-50/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">User Details</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Registration Info</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Last Active</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Role</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Projects</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 bg-white">
+                    {loading ? (
+                      [1, 2, 3, 4].map((i) => (
+                        <tr key={i}>
+                          <td colSpan={6} className="px-4 py-6">
+                            <div className="h-4 bg-neutral-100 rounded animate-pulse w-full"></div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : filteredUsers.map((u: any) => (
+                      <tr key={u.id} className="hover:bg-neutral-50/50 transition-colors group">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-bold text-neutral-950">{u.name}</div>
+                          <div className="text-[11px] text-neutral-500 font-mono">{u.email}</div>
+                          <div className="text-[9px] text-neutral-400 mt-0.5">Joined: {new Date(u.createdAt).toLocaleDateString()}</div>
+                        </td>
+                        <td className="px-4 py-4 max-w-[180px]">
+                          <div className="text-[10px] font-mono font-bold text-neutral-800 flex items-center gap-1">
+                            <Shield className="w-2.5 h-2.5 text-neutral-400" />
+                            {u.registeredIp || '—'}
+                          </div>
+                          <div className="text-[9px] text-neutral-400 truncate mt-0.5" title={u.registeredUserAgent}>
+                            {u.registeredUserAgent || '—'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          {u.lastLoginAt ? (
+                            <div className="space-y-0.5">
+                              <div className="text-[10px] font-bold text-emerald-700 flex items-center gap-1">
+                                <Activity className="w-2.5 h-2.5" />
+                                {new Date(u.lastLoginAt).toLocaleDateString()}
+                              </div>
+                              <div className="text-[9px] font-mono text-neutral-400">{u.lastLoginIp || 'unknown'}</div>
+                            </div>
+                          ) : (
+                            <span className="text-[10px] text-neutral-400 italic">Never logged in</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex flex-col gap-1">
+                            <span
+                              className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded-full w-fit border ${
+                                u.role === 'admin'
+                                  ? 'bg-amber-100 text-amber-900 border-amber-200'
+                                  : 'bg-neutral-100 text-neutral-700 border-neutral-200'
+                              }`}
+                            >
+                              {u.role}
+                            </span>
+                            {u.isSuspended && (
+                              <span className="text-[9px] bg-rose-600 text-white px-2 py-0.5 rounded-full font-bold uppercase w-fit">
+                                Suspended
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="inline-flex items-center gap-1.5 px-2 py-1 bg-neutral-50 border border-neutral-100 rounded-md">
+                            <Layers className="w-3 h-3 text-neutral-400" />
+                            <span className="font-mono font-bold text-neutral-800">{u.projectsCount || 0}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-right whitespace-nowrap space-x-2">
+                          <button
+                            onClick={() => handleResetSecurity(u.id, u.email)}
+                            className="inline-flex items-center p-2 text-neutral-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors"
+                            title="Reset Security Lock (Clear IP/Device)"
+                          >
+                            <Shield className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => handleToggleSuspendUser(u.id, u.isSuspended, u.email)}
+                            className={`inline-flex items-center p-2 rounded-lg transition-colors ${
+                              u.isSuspended ? 'text-emerald-600 hover:bg-emerald-50' : 'text-neutral-400 hover:text-rose-600 hover:bg-rose-50'
+                            }`}
+                            title={u.isSuspended ? 'Reactivate Account' : 'Suspend Account'}
+                          >
+                            {u.isSuspended ? <UserCheck className="w-4 h-4" /> : <UserX className="w-4 h-4" />}
+                          </button>
+                          <button
+                            onClick={() => handleToggleUserRole(u.id, u.role)}
+                            className="inline-flex items-center px-2.5 py-1.5 bg-white border border-neutral-200 hover:border-neutral-300 hover:bg-neutral-50 text-neutral-800 rounded-lg text-[11px] font-bold transition shadow-2xs active:scale-95"
+                          >
+                            {u.role === 'admin' ? (
+                              <><UserX className="w-3 h-3 mr-1" /> Demote</>
+                            ) : (
+                              <><UserCheck className="w-3 h-3 mr-1" /> Promote</>
+                            )}
+                          </button>
+                          <button
+                            onClick={() => handleDeleteUser(u.id, u.email)}
+                            className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex items-center"
+                            title="Delete user"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
-                    ))
-                  ) : filteredUsers.map((u: any) => (
-                    <tr key={u.id} className="hover:bg-neutral-50/50">
-                      <td className="px-4 py-3.5">
-                        <div className="font-bold text-neutral-950">{u.name}</div>
-                        <div className="text-[11px] text-neutral-500 font-mono">{u.email}</div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${
-                            u.role === 'admin'
-                              ? 'bg-amber-100 text-amber-900 border border-amber-200'
-                              : 'bg-neutral-100 text-neutral-700'
-                          }`}
-                        >
-                          {u.role}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 font-mono font-semibold text-neutral-800">
-                        {u.projectsCount} projects
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-500 font-mono text-[11px]">
-                        {new Date(u.createdAt).toLocaleDateString()}
-                      </td>
-                      <td className="px-4 py-3.5 text-right space-x-2">
-                        <button
-                          onClick={() => handleToggleUserRole(u.id, u.role)}
-                          className="px-2.5 py-1 bg-neutral-100 hover:bg-neutral-200 text-neutral-800 rounded text-[11px] font-semibold transition"
-                        >
-                          {u.role === 'admin' ? 'Demote to User' : 'Promote to Admin'}
-                        </button>
-                        <button
-                          onClick={() => handleDeleteUser(u.id, u.email)}
-                          className="p-1 text-neutral-400 hover:text-rose-600 transition"
-                          title="Delete user"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 inline" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!loading && filteredUsers.length === 0 && (
-                    <tr>
-                      <td colSpan={5} className="py-8 text-center text-neutral-400">
-                        No users found matching search.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                    {!loading && filteredUsers.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center">
+                          <div className="flex flex-col items-center gap-2 text-neutral-400">
+                            <Search className="w-8 h-8 opacity-20" />
+                            <span className="text-xs">No users matching &quot;{userSearch}&quot;</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -643,103 +756,116 @@ export default function AdminDashboardPage() {
               </div>
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full text-left text-xs min-w-[750px] whitespace-nowrap">
-                <thead className="bg-neutral-50 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px]">
-                  <tr>
-                    <th className="px-4 py-3">Project Name & Slug</th>
-                    <th className="px-4 py-3">Framework</th>
-                    <th className="px-4 py-3">Owner Account</th>
-                    <th className="px-4 py-3">Live URL</th>
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3 text-right">Actions</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-neutral-100">
-                  {loading ? (
-                    [1, 2, 3, 4].map((i) => (
-                      <tr key={i}>
-                        <td colSpan={6} className="px-4 py-4">
-                          <div className="h-6 bg-neutral-100 rounded animate-pulse w-full"></div>
+            <div className="overflow-x-auto -mx-5 sm:-mx-6">
+              <div className="inline-block min-w-full align-middle px-5 sm:px-6">
+                <table className="min-w-[950px] w-full text-left text-xs border-separate border-spacing-0">
+                  <thead className="bg-neutral-50/50 sticky top-0 z-10">
+                    <tr>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Project Name & Slug</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Framework</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Owner Account</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Live URL</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap">Status</th>
+                      <th className="px-4 py-3 border-b border-neutral-200 text-neutral-400 font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap text-right">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-neutral-100 bg-white">
+                    {loading ? (
+                      [1, 2, 3, 4].map((i) => (
+                        <tr key={i}>
+                          <td colSpan={6} className="px-4 py-6">
+                            <div className="h-4 bg-neutral-100 rounded animate-pulse w-full"></div>
+                          </td>
+                        </tr>
+                      ))
+                    ) : filteredProjects.map((p: any) => (
+                      <tr key={p.id} className="hover:bg-neutral-50/50 transition-colors group">
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-bold text-neutral-950 flex items-center gap-1.5">
+                            <Server className="w-3.5 h-3.5 text-neutral-400" />
+                            <span>{p.name}</span>
+                          </div>
+                          <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
+                            Created {new Date(p.createdAt).toLocaleDateString()}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="font-mono text-[11px] text-neutral-900 uppercase font-bold bg-neutral-100 px-2 py-0.5 rounded-md inline-block">
+                            {p.vercelFramework || p.framework || 'static'}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <div className="w-5 h-5 rounded-full bg-neutral-100 flex items-center justify-center text-[10px] font-bold text-neutral-500 uppercase">
+                              {p.ownerEmail?.[0] || 'U'}
+                            </div>
+                            <div className="font-medium text-neutral-900">{p.ownerEmail}</div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap font-mono">
+                          <a
+                            href={p.latestDeploymentUrl || `https://${p.subdomain}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="inline-flex items-center gap-1.5 text-emerald-700 font-bold hover:text-emerald-800 underline decoration-emerald-200 underline-offset-4"
+                          >
+                            <span className="truncate max-w-[180px]">{p.subdomain || p.name}</span>
+                            <ExternalLink className="w-3 h-3" />
+                          </a>
+                        </td>
+                        <td className="px-4 py-4 whitespace-nowrap">
+                          <span
+                            className={`text-[10px] font-bold uppercase px-2.5 py-0.5 rounded-full border ${
+                              p.status === 'ACTIVE'
+                                ? 'bg-emerald-50 text-emerald-800 border-emerald-100'
+                                : 'bg-rose-50 text-rose-800 border-rose-100'
+                            }`}
+                          >
+                            {p.status || 'ACTIVE'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-right whitespace-nowrap space-x-2">
+                          <Link
+                            href={`/dashboard/projects/${p.dbId || p.id}`}
+                            className="inline-flex items-center px-2.5 py-1.5 bg-white border border-neutral-200 hover:border-neutral-900 hover:bg-neutral-950 hover:text-white rounded-lg text-[11px] font-bold transition shadow-2xs active:scale-95"
+                          >
+                            Manage
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleToggleSuspend(p.id)}
+                            className={`inline-flex items-center px-2.5 py-1.5 border rounded-lg text-[11px] font-bold transition shadow-2xs active:scale-95 ${
+                              p.status === 'ACTIVE' 
+                                ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100' 
+                                : 'bg-emerald-50 border-emerald-200 text-emerald-700 hover:bg-emerald-100'
+                            }`}
+                          >
+                            {p.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteProject(p.id, p.name)}
+                            className="p-2 text-neutral-400 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-colors inline-flex items-center"
+                            title="Delete project"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </td>
                       </tr>
-                    ))
-                  ) : filteredProjects.map((p: any) => (
-                    <tr key={p.id} className="hover:bg-neutral-50/50">
-                      <td className="px-4 py-3.5">
-                        <div className="font-bold text-neutral-950 flex items-center gap-1.5">
-                          <span>{p.name}</span>
-                        </div>
-                        <div className="text-[10px] font-mono text-neutral-400 mt-0.5">
-                          Created {new Date(p.createdAt).toLocaleDateString()}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <div className="font-mono text-xs text-neutral-900 uppercase font-semibold">
-                          {p.vercelFramework || p.framework || 'static'}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3.5 text-neutral-600">
-                        <div className="font-medium text-neutral-900">{p.ownerEmail}</div>
-                      </td>
-                      <td className="px-4 py-3.5 font-mono text-neutral-700">
-                        <a
-                          href={p.latestDeploymentUrl || `https://${p.subdomain}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hover:underline flex items-center gap-1 text-emerald-700 font-semibold"
-                        >
-                          <span className="truncate max-w-[200px]">{p.subdomain || p.name}</span>
-                          <ExternalLink className="w-3 h-3 opacity-60" />
-                        </a>
-                      </td>
-                      <td className="px-4 py-3.5">
-                        <span
-                          className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded font-semibold border ${
-                            p.status === 'ACTIVE'
-                              ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
-                              : 'bg-rose-50 text-rose-800 border-rose-200'
-                          }`}
-                        >
-                          {p.status || 'ACTIVE'}
-                        </span>
-                      </td>
-                      <td className="px-4 py-3.5 text-right space-x-3 flex items-center justify-end">
-                        <Link
-                          href={`/dashboard/projects/${p.dbId || p.id}`}
-                          className="text-xs font-semibold text-neutral-950 hover:underline"
-                        >
-                          Manage
-                        </Link>
-                        <button
-                          type="button"
-                          onClick={() => handleToggleSuspend(p.id)}
-                          className={`text-xs font-semibold hover:underline ${
-                            p.status === 'ACTIVE' ? 'text-amber-700' : 'text-emerald-700'
-                          }`}
-                        >
-                          {p.status === 'ACTIVE' ? 'Suspend' : 'Reactivate'}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteProject(p.id, p.name)}
-                          className="text-xs font-semibold text-rose-600 hover:text-rose-800 hover:underline inline-flex items-center gap-1"
-                        >
-                          <Trash2 className="w-3 h-3" />
-                          <span>Delete</span>
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                  {!loading && filteredProjects.length === 0 && (
-                    <tr>
-                      <td colSpan={6} className="py-8 text-center text-neutral-400">
-                        No projects found matching search.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
+                    ))}
+                    {!loading && filteredProjects.length === 0 && (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center">
+                          <div className="flex flex-col items-center gap-2 text-neutral-400">
+                            <Search className="w-8 h-8 opacity-20" />
+                            <span className="text-xs">No projects matching &quot;{projectSearch}&quot;</span>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
             </div>
           </div>
         )}
@@ -825,85 +951,147 @@ export default function AdminDashboardPage() {
 
         {/* TAB 5: INFRASTRUCTURE CREDENTIALS */}
         {activeTab === 'infrastructure' && (
-          <div className="bg-white border border-neutral-200/80 rounded-2xl p-5 sm:p-8 space-y-6 shadow-2xs">
-            <div className="flex items-center justify-between border-b border-neutral-100 pb-4">
-              <div>
-                <h2 className="text-base font-bold text-neutral-950">Cloud Engine Infrastructure Credentials</h2>
-                <p className="text-xs text-neutral-500 mt-0.5">
-                  Official REST API connection credentials stored securely in the embedded JSON database.
-                </p>
+          <div className="space-y-6">
+            <div className="bg-white border border-neutral-200/80 rounded-2xl shadow-2xs overflow-hidden">
+              <div className="p-5 sm:p-6 border-b border-neutral-100 flex items-center justify-between bg-neutral-50/50">
+                <div>
+                  <h2 className="text-base font-bold text-neutral-950">Cloud Engine Connection</h2>
+                  <p className="text-[11px] text-neutral-500 mt-0.5">Secure REST API credentials and routing configuration.</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex flex-col items-end">
+                    <span className="text-[10px] text-neutral-400 uppercase font-bold tracking-tight">API Latency</span>
+                    <span className="text-xs font-mono font-bold text-neutral-950">
+                      {diagnostics?.latencyMs ? `${diagnostics.latencyMs}ms` : '—'}
+                    </span>
+                  </div>
+                  <div className={`w-2.5 h-2.5 rounded-full ${diagnostics?.authenticated ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]'}`} />
+                </div>
               </div>
-              <div className="text-xs font-mono">
-                Latency: <span className="font-bold">{diagnostics?.latencyMs ? `${diagnostics.latencyMs}ms` : '—'}</span>
+
+              <div className="p-5 sm:p-8">
+                {diagnostics?.error && (
+                  <div className="mb-6 p-4 bg-rose-50 border border-rose-100 rounded-xl text-xs text-rose-800 flex items-start gap-3">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />
+                    <div className="space-y-1">
+                      <p className="font-bold">Connection Diagnostic Error</p>
+                      <p className="opacity-80 break-words">{diagnostics.error}</p>
+                    </div>
+                  </div>
+                )}
+
+                {settingsStatus && (
+                  <div className={`mb-6 p-4 rounded-xl text-xs flex items-center gap-3 border ${
+                    settingsStatus.includes('Error') 
+                      ? 'bg-rose-50 border-rose-100 text-rose-800' 
+                      : 'bg-emerald-50 border-emerald-100 text-emerald-800'
+                  }`}>
+                    <Check className={`w-4 h-4 ${settingsStatus.includes('Error') ? 'text-rose-600' : 'text-emerald-600'}`} />
+                    <span>{settingsStatus}</span>
+                  </div>
+                )}
+
+                <form onSubmit={handleSaveSettings} className="max-w-2xl space-y-8">
+                  <div className="grid grid-cols-1 gap-6">
+                    {/* API Token Card */}
+                    <div className="group space-y-3">
+                      <div className="flex items-center justify-between">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                          Personal Access Token
+                        </label>
+                        <span className="text-[10px] text-neutral-400 bg-neutral-50 px-2 py-0.5 rounded border border-neutral-100">Encrypted at rest</span>
+                      </div>
+                      <div className="relative">
+                        <Key className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                        <input
+                          type="password"
+                          value={tokenInput}
+                          onChange={(e) => setTokenInput(e.target.value)}
+                          placeholder="••••••••••••••••••••••••••••••••"
+                          className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-neutral-950/5 focus:border-neutral-950 transition-all placeholder:text-neutral-300"
+                        />
+                      </div>
+                      <p className="text-[10px] text-neutral-400 leading-relaxed">
+                        The token is used to authenticate with the Vercel REST API. It is stored securely and never sent to the browser after initial save.
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                      {/* Team ID Card */}
+                      <div className="space-y-3">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                          Vercel Team ID
+                        </label>
+                        <div className="relative">
+                          <Users className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                          <input
+                            type="text"
+                            value={teamIdInput}
+                            onChange={(e) => setTeamIdInput(e.target.value)}
+                            placeholder="team_xxxxxxxxxxxx"
+                            className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-neutral-950/5 focus:border-neutral-950 transition-all"
+                          />
+                        </div>
+                        <p className="text-[10px] text-neutral-400">Optional. Required for Pro/Enterprise team deployments.</p>
+                      </div>
+
+                      {/* Base Domain Card */}
+                      <div className="space-y-3">
+                        <label className="text-[11px] font-bold uppercase tracking-wider text-neutral-500">
+                          Primary Routing Domain
+                        </label>
+                        <div className="relative">
+                          <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-neutral-400" />
+                          <input
+                            type="text"
+                            value={baseDomainInput}
+                            onChange={(e) => setBaseDomainInput(e.target.value)}
+                            placeholder="cmnty.biz.id"
+                            className="w-full pl-10 pr-4 py-3 bg-neutral-50 border border-neutral-200 rounded-xl text-xs font-mono focus:outline-none focus:ring-2 focus:ring-neutral-950/5 focus:border-neutral-950 transition-all"
+                          />
+                        </div>
+                        <p className="text-[10px] text-neutral-400">Used as the base for all automated wildcard subdomains.</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="pt-4 flex items-center justify-between gap-4 border-t border-neutral-100 mt-8">
+                    <div className="hidden sm:flex items-center gap-2 text-emerald-600">
+                      <Shield className="w-3.5 h-3.5" />
+                      <span className="text-[10px] font-bold uppercase tracking-tight">End-to-End Secure</span>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={savingSettings}
+                      className="w-full sm:w-auto px-6 py-3 bg-neutral-950 text-white rounded-xl text-xs font-bold hover:bg-neutral-800 disabled:opacity-50 transition shadow-lg shadow-neutral-950/10 active:scale-[0.98] flex items-center justify-center gap-2"
+                    >
+                      {savingSettings ? (
+                        <><RefreshCw className="w-3.5 h-3.5 animate-spin" /> Verifying Connection...</>
+                      ) : (
+                        <>Save & Validate Configuration</>
+                      )}
+                    </button>
+                  </div>
+                </form>
               </div>
             </div>
 
-            {diagnostics?.error && (
-              <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800 flex items-start gap-2">
-                <AlertCircle className="w-4 h-4 shrink-0 text-amber-600 mt-0.5" />
-                <span className="break-words">{diagnostics.error}</span>
+            <div className="bg-neutral-950 rounded-2xl p-6 text-white shadow-xl shadow-neutral-950/20 relative overflow-hidden group">
+              <div className="relative z-10 space-y-2">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-emerald-400" />
+                  Infrastructure Hardening
+                </h3>
+                <p className="text-[11px] text-neutral-400 max-w-lg leading-relaxed">
+                  Your credentials are encrypted using a system-level secret and stored in an atomic JSON database. 
+                  Access to these settings is restricted to accounts with the Super Admin role. 
+                  Any changes are recorded in the system audit logs.
+                </p>
               </div>
-            )}
-
-            {settingsStatus && (
-              <div className="p-3 bg-neutral-100 border border-neutral-200 rounded-xl text-xs text-neutral-800">
-                {settingsStatus}
+              <div className="absolute top-0 right-0 p-8 opacity-10 group-hover:opacity-20 transition-opacity">
+                <Server className="w-24 h-24 rotate-12" />
               </div>
-            )}
-
-            <form onSubmit={handleSaveSettings} className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                  API Token (Server Stored)
-                </label>
-                <input
-                  type="password"
-                  value={tokenInput}
-                  onChange={(e) => setTokenInput(e.target.value)}
-                  placeholder="Enter new token to update"
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                />
-                <span className="text-[10px] text-neutral-400">Stored in server JSON database and never exposed to browser.</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                  Cloud Project ID / Team ID
-                </label>
-                <input
-                  type="text"
-                  value={teamIdInput}
-                  onChange={(e) => setTeamIdInput(e.target.value)}
-                  placeholder="team_..."
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                />
-                <span className="text-[10px] text-neutral-400">Leave blank if deploying to Personal Account.</span>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-neutral-600 mb-1">
-                  Default Base Domain
-                </label>
-                <input
-                  type="text"
-                  value={baseDomainInput}
-                  onChange={(e) => setBaseDomainInput(e.target.value)}
-                  placeholder="cmnty.biz.id"
-                  className="w-full px-3 py-2 bg-neutral-50 border border-neutral-200 rounded-lg text-xs font-mono focus:outline-none focus:border-neutral-950"
-                />
-                <span className="text-[10px] text-neutral-400">Default domain for new projects</span>
-              </div>
-
-              <div className="sm:col-span-3 flex justify-end pt-2">
-                <button
-                  type="submit"
-                  disabled={savingSettings}
-                  className="px-4 py-2 bg-neutral-950 text-white rounded-lg text-xs font-semibold hover:bg-neutral-800 disabled:opacity-50 transition"
-                >
-                  {savingSettings ? 'Verifying & Saving...' : 'Save & Test Infrastructure Connection'}
-                </button>
-              </div>
-            </form>
+            </div>
           </div>
         )}
 
@@ -913,14 +1101,26 @@ export default function AdminDashboardPage() {
             <h3 className="font-bold text-sm text-neutral-950">System Audit Trail</h3>
             <div className="font-mono text-[11px] divide-y divide-neutral-100 max-h-96 overflow-y-auto">
               {data?.auditLogs?.map((log: any) => (
-                <div key={log.id} className="py-2.5 flex items-center justify-between text-neutral-600 gap-2">
+                <div key={log.id} className="py-2.5 flex flex-col sm:flex-row sm:items-center justify-between text-neutral-600 gap-2">
                   <div className="truncate pr-2">
                     <span className="font-bold text-neutral-950">[{log.action}]</span>{' '}
                     <span>{log.userEmail}</span>
+                    {log.metadata?.ip && (
+                      <span className="ml-2 text-[9px] bg-neutral-100 px-1.5 py-0.5 rounded text-neutral-500 font-mono">
+                        {log.metadata.ip as string}
+                      </span>
+                    )}
                   </div>
-                  <span className="text-neutral-400 text-[10px] shrink-0 font-sans">
-                    {new Date(log.createdAt).toLocaleString()}
-                  </span>
+                  <div className="flex items-center gap-2">
+                    {log.metadata?.ua && (
+                      <span className="hidden md:inline text-[9px] text-neutral-400 truncate max-w-[200px]" title={log.metadata.ua as string}>
+                        {log.metadata.ua as string}
+                      </span>
+                    )}
+                    <span className="text-neutral-400 text-[10px] shrink-0 font-sans">
+                      {new Date(log.createdAt).toLocaleString()}
+                    </span>
+                  </div>
                 </div>
               ))}
             </div>
